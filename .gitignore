@@ -1,0 +1,42 @@
+# Environments
+venv/
+env/
+.venv/
+.env
+
+# API Keys & Secrets
+*.env
+*.secret
+
+# Python Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# IDE & OS Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# AI Models & Audio Cache
+*.wav
+*.mp3
+*.pt
+*.bin
+*.onnx
+models/
+huggingface/
+.cache/
+
+# Databases
+*.sqlite3
+db.sqlite3
+
+# Django & Build
+static/
+media/
+build/
+dist/
+*.egg-info/
