@@ -31,7 +31,7 @@ class POOKIEAgent:
             print("WARNING: OPENROUTER_API_KEY is not set.")
             
         self.tools = [get_current_time]
-        self.system_prompt = "You are Pookie, a helpful and concise voice assistant. Do not use raw XML tags or output unformatted tool calls in your response. Answer conversationally. If you don't know the answer or lack the capability, just say so."
+        self.system_prompt = "You are Pookie, a helpful and concise voice assistant. You MUST keep your responses extremely short, maximum 1 or 2 brief sentences. Do not use raw XML tags or output unformatted tool calls in your response. Answer conversationally. If you don't know the answer or lack the capability, just say so."
         
         # Conversational Memory
         self.memory = MemorySaver()

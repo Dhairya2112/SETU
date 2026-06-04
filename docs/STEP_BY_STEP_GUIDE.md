@@ -47,6 +47,10 @@ Now, we need to wrap the AI in an API so external interfaces (like a React app) 
 1. **Configure DB:** Connect Django to MongoDB (using `djongo` or `mongoengine`).
 2. **Create Models:** Create database schemas for `User`, `ConversationHistory`, and `Settings`.
 
+### Step 6.5: Database Performance & Indexes
+1. **TTL Indexes:** Create time-to-live indexes for `command_logs` (expire after 90 days) and `refresh_tokens`.
+2. **Performance Indexes:** Create sorting indexes on `conversations` to ensure history loads instantly.
+
 ### Step 7: Build the REST API
 1. **Create Endpoints:** Using Django REST Framework, create endpoints like:
    - `POST /api/chat/` (Send a text command to the agent)
@@ -59,9 +63,22 @@ Now, we need to wrap the AI in an API so external interfaces (like a React app) 
 
 ---
 
+## Phase 2.5: Authentication & Onboarding
+
+Before moving to the frontend, we need to secure the backend with OAuth and prepare user profiles.
+
+### Step 8.5: OAuth and User Profiles
+1. **Install Auth Libraries:** `pip install dj-rest-auth django-allauth djangorestframework-simplejwt`
+2. **Configure Settings:** Update `settings.py` to include these apps and configure `allauth` to use Google, GitHub, and Microsoft providers. Disable local password registration for enhanced security.
+3. **Database Architecture:** Django Auth (Users, Sessions) will reside in `db.sqlite3`, while POOKIE app data remains in MongoDB.
+4. **Onboarding Models:** Update the MongoDB `UserPreferences` schema to include `preferred_name`, `ai_provider`, `execution_mode`, `permission_level`, and `privacy_consent`.
+5. **Endpoints:** Register `/api/auth/` routes in `urls.py`.
+
+---
+
 ## Phase 3: Desktop App (Windows / Linux) & Web Dashboard
 
-Build the visual interface for users to manage their agent.
+Build the visual interface and deep OS integration for users to manage their agent.
 
 ### Step 9: Setup React Frontend
 1. **Initialize React:** `npm create vite@latest pookie-frontend -- --template react-ts`
@@ -69,11 +86,20 @@ Build the visual interface for users to manage their agent.
 3. **Build the Layout:** Create the sidebar, header, and main chat area using the dark theme aesthetics from the blueprint.
 
 ### Step 10: Connect UI to Backend
-1. **API Integration:** Use `fetch` or `axios` to connect your React app to the Django REST endpoints (for login, history, etc.).
+1. **API Integration:** Use `fetch` or `axios` to connect your React app to the Django REST endpoints.
 2. **WebSocket Integration:** Connect to the Django WebSocket to display live text streaming as the AI generates its response.
-3. **Voice Visualizer:** Add a library like `framer-motion` to create an animated waveform that reacts when the AI is "listening" or "speaking".
+3. **Voice Visualizer:** Add a library like `framer-motion` to create an animated waveform that reacts when the AI is listening or speaking.
 
----
+### Step 11: Implement Onboarding & Permission UI
+1. **OAuth Screen:** Build the Login screen for Google/GitHub/Microsoft.
+2. **Setup Wizard:** Build the UI screens for Microphone Testing, AI Provider Selection, and Level 2 Permission Toggles.
+
+### Step 12: Electron System Integration
+1. **System Tray:** Configure Electron so the app lives in the system tray and runs in the background.
+2. **Global Hotkeys:** Register OS-level hotkeys so the user can summon the POOKIE overlay from anywhere.
+
+### Step 13: Application Packaging
+1. **Electron Builder:** Use `electron-builder` to package the React/Electron app into a distributable `.exe` for Windows and `.AppImage` for Linux.
 
 ---
 
@@ -83,8 +109,12 @@ Turn the core agent into a mobile experience.
 
 ### Step 14: React Native App
 1. **Initialize:** `npx react-native init PookieMobile`
-2. **Voice Pipeline:** Implement a mobile-friendly voice detection library (like `@react-native-voice/voice`) and a foreground service to keep it alive.
+2. **Voice Pipeline:** Implement a mobile-friendly voice detection library and a foreground service to keep it alive.
 3. **Connect to Cloud API:** Point the mobile app to a hosted version of your Django backend so the agent can be accessed anywhere.
+
+### Step 14.5: Firebase Integration
+1. **Push Notifications:** Integrate Firebase Cloud Messaging so the backend can send Task Reminders directly to the user's phone.
+2. **Analytics:** Setup basic crash reporting and analytics.
 
 ---
 
@@ -92,15 +122,8 @@ Turn the core agent into a mobile experience.
 
 Finalize the application for release.
 
-### Step 15: Security, Marketing & Deployment
-1. **Security Audit:** Review all permissions and ensure Level 3 commands trigger OS prompts.
-2. **Offline Resilience (NLP):** Train and integrate the DistilBERT intent classifier to ensure system-level commands work entirely offline without LLM API dependency.
+### Step 15: Security, AI Optimization, & Deployment
+1. **Security Audit & UAC:** Wire up Level 3 commands so they trigger native OS prompts (Windows UAC / Linux polkit) before execution.
+2. **Offline Resilience (NLP):** Train and integrate the DistilBERT intent classifier so system-level commands can be routed and executed entirely offline without relying on Groq or LangChain.
 3. **Landing Page:** Build a static website (Vite/Tailwind) that explains the permission model and provides download links for your compiled apps.
 4. **Dockerize Backend:** Containerize the Django backend and Redis/MongoDB using Docker Compose for your cloud API deployment.
-
----
-
-## Summary Checklist to Start Today:
-- [x] Create `pookie-backend` folder.
-- [x] Setup Python `venv` and install `openwakeword`, `faster-whisper`, `langchain-groq`, `python-dotenv`, and `kokoro`.
-- [x] Write a script that listens for "Hey POOKIE", records 5 seconds of audio, transcribes it, and prints the result.

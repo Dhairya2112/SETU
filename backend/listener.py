@@ -73,7 +73,9 @@ def main():
                     tts.speak(response)
                     
                     # Follow up prompt
-                    tts.speak("Anything else?")
+                    if not response.strip().endswith('?'):
+                        tts.speak("Anything else?")
+                        
                     print("\nListening for follow-up...")
                     
                 print("\nReturning to idle listening state...")
