@@ -27,13 +27,13 @@ def generate_tokens(user, device_info=None):
     }, settings.SECRET_KEY, algorithm='HS256')
     
     token_hash = hashlib.sha256(refresh_token.encode()).hexdigest()
-    RefreshToken.objects.create(
+    RefreshToken(
         token_hash=token_hash,
         user_id=user.user_id,
         issued_at=now,
         expires_at=refresh_expiry,
         device_info=device_info
-    )
+    ).save()
     
     return {
         'access_token': access_token,
@@ -55,6 +55,7 @@ class PyJWTAuthentication(authentication.BaseAuthentication):
                 
             user = User.objects(user_id=payload['user_id']).first()
             if not user or not user.is_active:
+                print(f"PyJWT Auth Failed: User not found {payload['user_id']}")
                 raise exceptions.AuthenticationFailed('User not found or inactive.')
                 
             # For Django REST Framework, request.user needs to have is_authenticated property
@@ -62,6 +63,8 @@ class PyJWTAuthentication(authentication.BaseAuthentication):
             user.is_authenticated = True
             return (user, token)
         except jwt.ExpiredSignatureError:
+            print("PyJWT Auth Failed: Token expired")
             raise exceptions.AuthenticationFailed('Token has expired.')
-        except jwt.InvalidTokenError:
+        except jwt.InvalidTokenError as e:
+            print(f"PyJWT Auth Failed: Invalid token {e}")
             raise exceptions.AuthenticationFailed('Invalid token.')

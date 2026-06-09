@@ -77,6 +77,8 @@ POOKIE solves this by offering a locally-runnable, extensible, privacy-respectin
 | G7 | Support fast Cloud AI inference (Groq API) for LLM to reduce app footprint | 🟠 High |
 | G8 | Provide a rich, animated, real-time frontend dashboard | 🟡 Medium |
 | G9 | Allow OAuth-based authentication with session management | 🟡 Medium |
+| G10 | Implement Fluid Cross-Device Spatial Handoff for seamless context continuity | 🟢 Vanguard |
+| G11 | Implement Algorithmic Personalization (Lore & Visual DNA) with strict zero-bloat constraints | 🟢 Vanguard |
 
 ### 2.2 Business Objectives
 
@@ -182,13 +184,13 @@ Pain Point: Existing tools are too restrictive or cloud-only
 
 | ID | Requirement | Priority |
 | --- | --- | --- |
-| FR-FE-01 | App SHALL display a real-time conversation UI (chat-style) | 🔴 Critical |
+| FR-FE-01 | App SHALL display a real-time Command Activity Log (CLI terminal style) | 🔴 Critical |
 | FR-FE-02 | App SHALL display an animated voice visualizer during listening/speaking states | 🟠 High |
 | FR-FE-03 | App SHALL reside in the system tray and be activatable via hotkey | 🔴 Critical |
 | FR-FE-04 | App SHALL provide a settings panel for permissions, preferences, and LLM mode | 🔴 Critical |
 | FR-FE-05 | App SHALL display command execution status and results in real-time | 🔴 Critical |
 | FR-FE-06 | App SHALL support dark mode as the default theme | 🟠 High |
-| FR-FE-07 | App SHALL show full conversation history with search | 🟡 Medium |
+| FR-FE-07 | App SHALL show full command execution history log with search | 🟡 Medium |
 
 ### 4.6 Frontend — Mobile (Android via React Native)
 

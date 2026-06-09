@@ -8,13 +8,19 @@ from core.users.models import User
 @sync_to_async
 def get_user_from_token(token):
     try:
+        print(f"WS Auth Token: {token[:10]}...")
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
         if payload.get("type") == "access":
             user = User.objects(user_id=payload['user_id']).first()
             if user and user.is_active:
+                print(f"WS Auth Success: {user.username}")
                 return user
-    except Exception:
-        pass
+            else:
+                print("WS Auth Failed: User not found or inactive")
+        else:
+            print("WS Auth Failed: Token not access type")
+    except Exception as e:
+        print(f"WS Auth Exception: {e}")
     return None
 
 class JwtAuthMiddleware(BaseMiddleware):

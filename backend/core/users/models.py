@@ -7,7 +7,7 @@ class UserPreferences(me.EmbeddedDocument):
     ai_provider = me.StringField(choices=["groq", "openrouter"], default="groq")
     privacy_consent_granted = me.BooleanField(default=False)
     llm_mode = me.StringField(choices=["local", "cloud"], default="cloud")
-    llm_model = me.StringField(default="llama-3.1-8b-instant")
+    llm_model = me.StringField(default="google/gemma-2-9b-it:free")
     tts_voice = me.StringField(default="default")
     tts_speed = me.FloatField(default=1.0)
     wake_word_sensitivity = me.FloatField(default=0.5)

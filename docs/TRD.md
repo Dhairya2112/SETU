@@ -107,6 +107,12 @@ Coding Standards & Conventions
 └──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
 ```
 
+### 1.3 Spatial Handoff Protocol (Vanguard Feature)
+To achieve seamless cross-device continuity (e.g., passing a completed task's response from Desktop to Android), the architecture employs a localized presence mesh:
+*   **Discovery Layer:** Both the Electron desktop app and React Native mobile app broadcast mDNS/Zeroconf packets on the local subnet (`_pookie._tcp.local`) to identify active peers.
+*   **Mesh Connection:** Once discovered, devices establish a lightweight peer-to-peer WebSocket connection or route through the local Django Channels server.
+*   **State Migration Payload:** When a device detects user absence (via camera, idle timeout, or explicit handoff request), the task's context (task ID, TTS audio chunks, remaining UI state) is serialized and forwarded to the secondary device for uninterrupted execution and audio playback.
+
 ## 2. Technology Stack Specifications
 
 ### 2.1 AI / ML Engine
@@ -1011,11 +1017,8 @@ NER (Entity Extraction):
 
 # LLM Configuration
 class LLMConfig:
-    # LOCAL MODE
-    llm_provider = "groq"
-    local_base_url = "http://localhost:11434"
-    local_models = ["llama3:8b", "mistral:7b", "phi3:mini"]
-    default_local_model = "llama3:8b"
+    # Note: Offline AI models (like Llama/local models) are removed to keep POOKIE fast and lightweight.
+    # All reasoning is powered by high-speed cloud APIs.
     
     # CLOUD MODE
     cloud_provider = "openai"
@@ -1790,7 +1793,6 @@ class POOKIEUser(HttpUser):
 | Wake Word Detection | CPU Usage (idle) | < 2% | psutil monitoring during 1hr idle |
 | Faster-Whisper STT (base, local) | Transcription time (5s audio) | < 1s | Average over 100 samples |
 | Intent Classifier | Inference latency | < 200ms | Average on CPU |
-| LLM First Token (local) | Time to first streamed token | < 3s | llama3:8b on 8GB RAM |
 | LLM First Token (cloud) | Time to first streamed token | < 1.5s | GPT-4o API |
 | API Response (non-AI) | P95 latency | < 200ms | Load test |
 | WebSocket Connection | Time to establish | < 300ms | Client measurement |
@@ -2009,3 +2011,27 @@ pookie/
 ├── .env.example
 └── README.md
 ```
+
+## 15. Security Architecture & Threat Mitigation
+
+### 15.1 Prompt Injection Defense
+*   **Tool Sandboxing:** The AI model (LangChain/Groq) operates within a restricted environment and cannot execute arbitrary OS commands. It must route requests through predefined, sanitized Python tools.
+*   **Intent Pre-Processing:** An offline NLP classifier (e.g., DistilBERT) evaluates the safety and intent of the input *before* it reaches the LLM. High-risk commands are immediately dropped.
+*   **Human-in-the-Loop (Level 3):** Any command requiring destructive or administrative action triggers a hardware-level pause, invoking native OS prompts (Windows UAC / Linux polkit) requiring explicit user approval.
+
+### 15.2 Network & Authentication Security
+*   **Strict CORS:** The Django backend enforces strict Cross-Origin Resource Sharing rules, rejecting requests from unknown origins to prevent CSRF attacks.
+*   **JWT Verification:** All local API endpoints and WebSocket channels require a valid JSON Web Token. Unauthorized local traffic is dropped instantly.
+*   **Spatial Handoff Encryption:** Cross-device mesh connections (Phase 6) use TLS/WSS encryption and cryptographic device pairing to prevent Man-in-the-Middle (MitM) attacks on the local network.
+
+### 15.3 Secrets & Dependency Management
+*   **Key Storage:** API keys (Groq, Firebase) are strictly stored in `.env` files (excluded from version control) or securely persisted within the OS-native credential manager via the `keyring` library.
+*   **Supply Chain Protection:** All dependencies in `requirements.txt` and `package.json` are strictly version-pinned. Automated audits (`npm audit`, `safety check`) are required in the CI/CD pipeline to detect vulnerable sub-dependencies.
+*   **Hardware Kill Switch:** The user can instantly sever all AI control by terminating the local Python daemon.
+
+## 16. Personalization Engine & Anti-Bloat Constraints
+To ensure the Algorithmic Personalization features (Phase 6) do not degrade system performance or consume excessive RAM, the following architectural constraints are strictly enforced:
+*   **Asynchronous Processing:** The extraction of "User Lore" must never block the main voice loop. It must run strictly as a low-priority Celery background task when the CPU is idle.
+*   **Data Minimalism:** User preferences and facts must be stored as raw text/JSON in MongoDB, rather than requiring heavy local Vector databases (like ChromaDB or FAISS) for simple facts. Total lore footprint must not exceed 5MB per user.
+*   **Zero-Overhead Adaptive Prompts:** Personality mirroring is achieved strictly through dynamic string manipulation of the LangChain `SystemMessage`. No additional fine-tuning or secondary LLMs may be loaded into memory.
+*   **Procedural Visual DNA:** The uniqueness of the 3D Orb is achieved by passing a mathematical hash of the user's ID as a seed to the existing WebGL Simplex Noise shader. It costs zero extra GPU cycles compared to the generic Orb.

@@ -13,6 +13,8 @@ class RefreshSerializer(serializers.Serializer):
     refresh_token = serializers.CharField(required=True)
 
 class UserPreferencesSerializer(serializers.Serializer):
+    preferred_name = serializers.CharField(required=False, allow_null=True)
+    privacy_consent_granted = serializers.BooleanField(required=False)
     llm_mode = serializers.ChoiceField(choices=["local", "cloud"], required=False)
     llm_model = serializers.CharField(required=False)
     tts_voice = serializers.CharField(required=False)

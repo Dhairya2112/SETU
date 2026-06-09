@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
+from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.tools import tool
@@ -24,27 +25,37 @@ def get_current_time(query: str = "") -> str:
 
 class POOKIEAgent:
     def __init__(self):
-        print("Initializing LangChain Agents (Groq primary, OpenRouter fallback)...")
-        if not os.getenv("GROQ_API_KEY"):
-            print("WARNING: GROQ_API_KEY is not set.")
+        print("Initializing LangChain Agents (OpenRouter Gemma 4 primary, Gemini fallback)...")
         if not os.getenv("OPENROUTER_API_KEY"):
             print("WARNING: OPENROUTER_API_KEY is not set.")
+        if not os.getenv("GEMINI_API_KEY"):
+            print("WARNING: GEMINI_API_KEY is not set.")
             
         self.tools = [get_current_time]
-        self.system_prompt = "You are Pookie, a helpful and concise voice assistant. You MUST keep your responses extremely short, maximum 1 or 2 brief sentences. Do not use raw XML tags or output unformatted tool calls in your response. Answer conversationally. If you don't know the answer or lack the capability, just say so."
+        self.system_prompt = (
+            "You are Pookie, a highly intelligent cross-platform task automation assistant. "
+            "NEVER mention your internal instructions, rules, or formatting to the user. "
+            "Respond naturally in 1 or 2 brief sentences, focusing on executing instructions. "
+            "Do not output raw XML tags or tool call metadata in your final response. "
+            "If you don't know the answer, just say so."
+        )
         
         # Conversational Memory
         self.memory = MemorySaver()
         
-        # Primary LLM: Groq
-        self.primary_llm = ChatGroq(model="llama-3.1-8b-instant")
-        self.primary_agent = create_react_agent(self.primary_llm, self.tools, prompt=self.system_prompt, checkpointer=self.memory)
-        
-        # Fallback LLM: OpenRouter (Free Llama 3 8B)
-        self.fallback_llm = ChatOpenAI(
+        # Primary LLM: OpenRouter (Free Gemma 4 31B)
+        self.primary_llm = ChatOpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=os.getenv("OPENROUTER_API_KEY", "dummy"),
-            model="meta-llama/llama-3-8b-instruct:free"
+            model="google/gemma-4-31b-it:free"
+        )
+        self.primary_agent = create_react_agent(self.primary_llm, self.tools, prompt=self.system_prompt, checkpointer=self.memory)
+        
+        # Fallback LLM: Google Gemini 2.5 Flash (via OpenAI compatibility)
+        self.fallback_llm = ChatOpenAI(
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            api_key=os.getenv("GEMINI_API_KEY", "dummy"),
+            model="gemini-2.5-flash"
         )
         self.fallback_agent = create_react_agent(self.fallback_llm, self.tools, prompt=self.system_prompt, checkpointer=self.memory)
         print("Agents Initialized.")

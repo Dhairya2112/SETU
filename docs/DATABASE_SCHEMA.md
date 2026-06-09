@@ -39,8 +39,7 @@ Stores user identity, authentication details, preferences, and permissions.
   "last_active": "ISODate",
   "is_active": "boolean",
   "preferences": {
-    "llm_mode": "local | cloud",
-    "llm_model": "llama3 | gpt-4o | mistral",
+    "llm_model": "gemma-4 | gemini | other_cloud_models",
     "tts_voice": "string",
     "tts_speed": "float",
     "wake_word_sensitivity": "float",
