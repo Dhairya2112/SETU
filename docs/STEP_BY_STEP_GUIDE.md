@@ -1,640 +1,724 @@
-# POOKIE — Master Implementation Guide (Source of Truth)
+# Setu — Master Implementation Guide
 
-> **AI RULE:** This is the STRICT execution order. Never skip ahead. Never implement a future phase step without completing the current one. Always check the status markers below before writing any code.
+> **AI RULE:** This is the strict execution order. Never skip ahead. Always check status markers before writing any code.
+> **MVP Deadline: July 20, 2026 | Team: 3 people | Budget: ₹0**
 
 ---
 
 ## STATUS LEGEND
-- ✅ **COMPLETED** — Code exists and is verified working
-- ⚠️ **PARTIAL** — Code exists but has known gaps/bugs (see notes)
-- ➡️ **NEXT** — This is the immediate next task to implement
+
+- ✅ **COMPLETED** — Code exists and verified working
+- ⚠️ **PARTIAL** — Code exists but has known gaps
+- ➡️ **NEXT** — Immediate next task
 - ⬜ **PENDING** — Not started, do not touch yet
+- 🚫 **SKIP** — Deprioritized, not part of Setu MVP
 
 ---
 
-## KNOWN BUGS (Fix these as you encounter them)
+## KNOWN BUGS
 
-| # | File | Bug | Fix |
-|---|---|---|---|
-| B1 | `backend/listener.py` L24 | Prints "Hey Jarvis" — wrong wake word label | Change print string to "Hey POOKIE" |
-| B2 | `backend/core/wake_word/detector.py` L14 | `wakeword_models=['hey_jarvis']` — using Jarvis model instead of POOKIE | Train custom model (Phase 5) or replace with `hey_mycroft` for testing |
-| B3 | `backend/core/agent/tasks.py` L27 | `POOKIEAgent()` is instantiated inside the task — loads LLM every call (very slow) | Move `agent = POOKIEAgent()` to module-level, same as `tts_engine` |
-| B4 | `backend/core/users/auth.py` L30 | `RefreshToken.objects.create(...)` — `.create()` is a Django ORM method; MongoEngine uses `.save()` | Replace with `RefreshToken(...).save()` |
-| B5 | `frontend/src/hooks/useAgentSocket.ts` L19 | hardcoded `conversationId: 'default'` in Dashboard — all users share one WebSocket room | Pass a real UUID from a new conversation API call |
-| B6 | `frontend/src/hooks/useAgentSocket.ts` | `status` chunk_type (`thinking`, `done`) is received but never handled — `isThinking` never resets to false on `done` | Add handler for `chunk_type === 'status'` |
-| B7 | `backend/core/agent/tasks.py` | Conversation messages are never saved to MongoDB after each exchange | Add `Conversation` model save logic at end of task |
-| B8 | `frontend/src/pages/Onboarding.tsx` L57 | Name saved to `localStorage` only — never sent to `PATCH /api/v1/user/profile/` | Wire to API in Step 11.1 |
+All bugs B1–B8 are **✅ RESOLVED**. No open bugs.
 
 ---
 
 ## PHASE 1: Core AI & Local Inference Foundation ✅ COMPLETED
 
 ### Step 1: Backend Environment ✅
-- Python 3.11 venv created
-- Django 6.0.5 project initialized at `backend/`
-- All core libraries installed via `requirements.txt`
-- Django apps: `core.users`, `core.conversations`, `core.agent`, `core.websockets`, `core.tasks`
+- Python 3.11 venv, Django 6.0.5, all libraries in `requirements.txt`
+- Apps: `core.users`, `core.conversations`, `core.agent`, `core.websockets`
 
-### Step 2: Wake Word Detection ✅ (with Bug B2)
+### Step 2: Wake Word Detection ✅
 - **File:** `backend/core/wake_word/detector.py`
-- OpenWakeWord model loaded with `hey_jarvis` (temporary — custom model in Phase 5)
-- Silero VAD loaded for end-of-speech detection
-- `listen_for_wake_word()` — blocks until score > 0.06 threshold
-- `capture_audio_dynamic()` — records 16kHz mono float32 until 700ms silence or 15s timeout
-- **Known Issue (B2):** Using Jarvis model as placeholder
+- OpenWakeWord with `hey_jarvis` proxy model (custom "Hey Setu" model → Step 20)
+- Silero VAD for end-of-speech detection
+- `listen_for_wake_word()` → blocks until score > 0.06
+- `capture_audio_dynamic()` → records 16kHz mono float32 until 700ms silence or 15s timeout
 
 ### Step 3: Speech-to-Text ✅
 - **File:** `backend/core/ai/stt.py`
-- Faster-Whisper `small.en` model, `int8` quantization, CPU device
-- `transcribe(audio_data)` → joins all segments → returns stripped string
-- Audio spec: float32, 16kHz, mono
+- Faster-Whisper `small.en`, `int8`, CPU device
+- `transcribe(audio_data)` → returns stripped string
+- ⚠️ **Note:** Model must be swapped to multilingual in Step 14
 
-### Step 4: LangChain Agent Brain ✅ (with Bug B3)
+### Step 4: LangGraph Agent Brain ✅
 - **File:** `backend/core/agent/llm_agent.py`
-- `POOKIEAgent` class with 3-layer resilience:
-  - **Layer 1:** `InMemoryCache` — identical queries return cached response (zero latency/cost)
-  - **Layer 2:** `@retry` with Tenacity — exponential backoff (1s, 2s, 4s) on rate limit
-  - **Layer 3:** `ChatNVIDIA (deepseek-ai/deepseek-v4-flash)` primary → `ChatOpenAI via OpenRouter (google/gemma-4-31b-it:free)` fallback
-- `LangGraph create_react_agent` with `MemorySaver` checkpointer
-- Thread ID: `pookie_local_session` (single-user local session)
+- `SetuAgent` class with 3-layer resilience:
+  - Layer 1: `InMemoryCache` — identical queries cached (→ replace with Redis in Step 16)
+  - Layer 2: Tenacity `@retry` — exponential backoff (1s, 2s, 4s)
+  - Layer 3: Primary `ChatNVIDIA` → Secondary `OpenRouter` → Tertiary `Gemini-2.5-Flash`
+- LangGraph `create_react_agent` with `MemorySaver` checkpointer
+- Agent loaded as module-level singleton in `tasks.py`
 - XML/tool-tag scrubbing via `re.sub` before returning text
-- Tools: `get_current_time` (only tool currently registered — more in Phase 5)
-- **Known Issue (B3):** Agent re-instantiated per Celery task call
 
 ### Step 5: Text-to-Speech ✅
 - **File:** `backend/core/ai/tts.py`
-- Kokoro `KPipeline(lang_code='a')` — American English
-- Voice: `af_heart` (American Female, high quality)
+- Kokoro `KPipeline(lang_code='a')`, voice: `af_heart`
 - `speak(text)` — plays locally via sounddevice at 24kHz
-- `generate_base64(text)` — generates WAV, encodes to base64 string for WebSocket streaming
-- TTS loaded globally in `tasks.py` (correct optimization)
+- `generate_base64(text)` — generates WAV, encodes to base64 for WebSocket streaming
+- ⚠️ **Note:** Voice selection (male/female/Hindi) to be added in Step 14
 
-### Step 5.1: Main Listener Loop ✅ (with Bug B1)
+### Step 5.1: Main Listener Loop ✅
 - **File:** `backend/listener.py`
 - Full voice pipeline: WakeWord → STT → Agent → TTS
 - Exit words: `["no", "nope", "bye", "goodbye", "thanks", "stop", "nothing"]`
-- Follow-up loop after first interaction
-- **Known Issue (B1):** Print statement says "Hey Jarvis"
 
 ---
 
 ## PHASE 2: Web API, Database & Real-Time Sync ✅ COMPLETED
 
 ### Step 6: MongoDB Architecture ✅
-- **ODM:** MongoEngine connected in `settings.py` L174 (`pookie_db` on `localhost:27017`)
-- **Collections implemented:**
-  - `users` → `backend/core/users/models.py` — `User`, `UserPreferences`, `UserPermissions`
-  - `conversations` → `backend/core/conversations/models.py` — `Conversation`, `Message`, `MessageMetadata`
-  - `refresh_tokens` → `backend/core/users/models.py` — `RefreshToken`
-  - ❌ `command_logs` — **NOT YET IMPLEMENTED** (no model file for this collection)
-  - ❌ `reminders` — **NOT YET IMPLEMENTED** (tasks app exists but no model)
+- MongoEngine connected in `settings.py` (`setu_db` on `localhost:27017`)
+- Collections: `users`, `conversations`, `refresh_tokens`, `command_logs`
+- All core models implemented
 
 ### Step 6.5: Database Indexes ✅
-- `users`: `email` (unique via MongoEngine), `user_id`
-- `conversations`: `conversation_id`, `(user_id, -started_at)` compound
-- `refresh_tokens`: `expires_at` (TTL=0, auto-expire), `token_hash`
+- `users`: `email` (unique), `user_id` (unique)
+- `conversations`: `conversation_id` (unique), `(user_id, -started_at)` compound
+- `refresh_tokens`: `expires_at` (TTL=0), `token_hash` (unique)
+- `command_logs`: `(user_id, -executed_at)` compound, TTL 90 days
 
-### Step 7: Auth & Security ⚠️ PARTIAL
-- **Custom JWT Auth (DONE):**
-  - `backend/core/users/auth.py` — `generate_tokens()` creates HS256 JWT (15min access, 7day refresh)
-  - `PyJWTAuthentication` — validates `Bearer` token on every protected request
-  - `RefreshView` — rotates refresh tokens (revokes old, issues new)
-  - `RegisterView`, `LoginView` — local account creation with bcrypt
-- **OAuth (NOT CONFIGURED):**
-  - `dj-rest-auth` + `allauth` installed, Google/GitHub/Microsoft providers in `INSTALLED_APPS`
-  - **Missing:** No OAuth client credentials in `settings.py` or `.env`
-  - **Missing:** No `SOCIALACCOUNT_PROVIDERS` dict in settings
-  - This is deferred — local auth is working and sufficient for now
-- **Known Issue (B4):** `RefreshToken.objects.create()` should be `RefreshToken(...).save()`
+### Step 7: Auth & Security ✅
+- `generate_tokens()` — HS256 JWT (15min access, 7-day refresh)
+- `PyJWTAuthentication` — validates Bearer token on every protected request
+- `RefreshView` — rotates refresh tokens
+- `RegisterView`, `LoginView` — local auth (to be replaced by OAuth in Step 13)
 
 ### Step 8: REST Endpoints ✅
-| Endpoint | View | File | Status |
-|---|---|---|---|
-| `POST /api/v1/auth/register/` | `RegisterView` | `core/users/views.py` | ✅ |
-| `POST /api/v1/auth/login/` | `LoginView` | `core/users/views.py` | ✅ |
-| `POST /api/v1/auth/refresh/` | `RefreshView` | `core/users/views.py` | ✅ |
-| `GET/PATCH /api/v1/user/profile/` | `UserProfileView` | `core/users/views.py` | ✅ |
-| `GET/PATCH /api/v1/user/permissions/` | `UserPermissionsView` | `core/users/views.py` | ✅ |
-| `GET /api/v1/conversations/` | `ConversationListView` | `core/conversations/views.py` | ✅ |
-| `GET/DELETE /api/v1/conversations/{id}/` | `ConversationDetailView` | `core/conversations/views.py` | ✅ |
-| `POST /api/chat/` | `CommandView` | `core/agent/views.py` | ✅ |
-| `GET /api/agent/status/{task_id}/` | `StatusView` | `core/agent/views.py` | ⚠️ Mock only |
-| `POST/GET /api/v1/reminders/` | — | — | ❌ Not implemented |
+- All core endpoints implemented (see `AI_CONTEXT.md` API Reference)
 
 ### Step 8.5: WebSockets & Celery ✅
-- **ASGI Router:** `backend/pookie/asgi.py` — `ProtocolTypeRouter` separates HTTP and WS traffic
-- **JWT Middleware:** `core/websockets/middleware.py` — `JwtAuthMiddleware` validates token from query param before accepting WS
-- **Consumer:** `core/websockets/consumers.py` — `AgentStreamConsumer`
-  - `connect()`: joins `chat_{conversation_id}` channel group
-  - `receive()`: dispatches to `process_agent_command.delay()`
-  - `agent_message()`: pushes chunks to WebSocket
-- **Celery Task:** `core/agent/tasks.py` — `process_agent_command`
-  - Sends `status: thinking` → streams text word-by-word (50ms delay) → generates TTS base64 → sends `status: done`
-- **Channel Layer:** Redis on `127.0.0.1:6379`
-- **Celery Broker/Backend:** Redis on `127.0.0.1:6379/0`
+- `backend/setu/asgi.py` — `ProtocolTypeRouter` separates HTTP and WS
+- `JwtAuthMiddleware` — validates token from query param before accepting WS
+- `AgentStreamConsumer` — joins `chat_{conversation_id}` channel group
+- `process_agent_command` Celery task — streams word-by-word, generates TTS base64
+- Channel Layer + Celery Broker: Redis `127.0.0.1:6379`
 
 ---
 
-## PHASE 3: Desktop App & Bioluminescent Frontend
+## PHASE 3: Desktop Dashboard & Frontend ✅ COMPLETED
 
 ### Step 9: React Frontend Setup ✅
-- **Stack:** React 18 + Vite + TypeScript + TailwindCSS
-- **Root:** `frontend/src/App.tsx` — routes `/`, `/auth`, `/onboarding/*`, `/dashboard/*`
-- **Background:** `NeuralMesh.tsx` — canvas-based physics particle system (mouse-reactive)
-- **Auth:** `Login.tsx` — glassmorphic OAuth card UI (wired to `/api/v1/auth/login/`, stores token in `localStorage`)
-- **Routing:** `react-router-dom` installed
+- React 18 + Vite + TypeScript + TailwindCSS
+- `App.tsx` — routes `/`, `/auth`, `/onboarding/*`, `/dashboard/*`
+- `NeuralMesh.tsx` — canvas-based physics particle background
+- `Login.tsx` — glassmorphic card wired to `/api/v1/auth/login/`
 
 ### Step 10: Onboarding UI ✅
 - **File:** `frontend/src/pages/Onboarding.tsx`
-- 3-step wizard with progress indicator dots
-- Step 1 (`/onboarding/name`): Name input → saves to `localStorage`
-- Step 2 (`/onboarding/hardware`): Mock mic test button → skip/continue
-- Step 3 (`/onboarding/permissions`): Level 2 toggle
-- Step 4 (`/onboarding/done`): Animated confirmation → saves `pookie_onboarding_completed` flag and redirects to `/dashboard`
-- **Updates:** Removed offline AI engine/Llama choice to keep POOKIE fast and lightweight.
-- **Missing:** EULA checkbox, API wiring, real mic test
-
-### Step 10.5: UI Polish ⚠️ PARTIAL
+- 4-step wizard: Name → Mic Test → Permissions + EULA → Done
 - Framer Motion transitions between steps ✅
-- Glassmorphic card container ✅
-- Skeleton screens ❌ Not implemented
-- Error boundaries ❌ Not implemented
+- ⚠️ **Note:** Must be expanded to 8 steps in Step 23
+
+### Step 11: Connect UI to Backend ✅
+- All B3–B8 bugs fixed
+- Zustand store `useAppStore.ts` with token, username, conversationId, eulaAccepted
+- TanStack React Query `QueryClientProvider` wrapping `main.tsx`
+
+### Step 12: OS-Level Tool Registration & Agent Intelligence ✅
+- **File:** `backend/core/agent/tools.py`
+  - System: `open_application`, `run_shell_command`, `get_system_info`, `get_current_time`, `control_volume`, `web_search`
+  - File: `read_file`, `write_file`, `search_files`, `list_directory`
+- **File:** `backend/core/agent/safety.py` — blacklist, path sandboxing, output truncation
+- **File:** `backend/core/agent/permissions.py` — `check_permission(user_id, required_level)`
+- **File:** `backend/core/agent/models.py` — `CommandLog` MongoEngine model with TTL index
 
 ---
 
-### Step 11: Connect UI to Backend ✅ COMPLETED
+## PHASE 3.5: Dashboard Structural Overhaul
+*Goal: Realign the frontend React architecture to the final design specs before diving into deep backend logic.*
 
-This step made the frontend functional. All sub-steps completed.
-
-#### 11.0: Fix Critical Bugs First
-Before any new feature work, fix the bugs that will break integration:
-
-**Fix Bug B3** — `backend/core/agent/tasks.py`:
-```python
-# BEFORE (broken — re-instantiates LLM every call):
-agent = POOKIEAgent()
-response_text = agent.run(text)
-
-# AFTER (correct — singleton loaded once at worker boot):
-# Add at module level, OUTSIDE the task function:
-agent_instance = POOKIEAgent()
-
-# Inside the task:
-response_text = agent_instance.run(text)
-```
-
-**Fix Bug B4** — `backend/core/users/auth.py` L30:
-```python
-# BEFORE:
-RefreshToken.objects.create(...)
-# AFTER:
-RefreshToken(
-    token_hash=token_hash,
-    user_id=user.user_id,
-    issued_at=now,
-    expires_at=refresh_expiry,
-    device_info=device_info
-).save()
-```
-
-**Fix Bug B6** — `frontend/src/hooks/useAgentSocket.ts`:
-```typescript
-// Add this block inside ws.onmessage:
-} else if (data.chunk_type === 'status') {
-    if (data.message === 'thinking') {
-        setIsThinking(true);
-    } else if (data.message === 'done') {
-        setIsThinking(false);
-    }
-}
-```
-
-#### 11.1: Wire Onboarding to Backend API
-**File:** `frontend/src/pages/Onboarding.tsx`
-
-After Step 1 (Name), send to profile:
-```typescript
-// In StepName handleNext(), after localStorage.setItem:
-const token = localStorage.getItem('pookie_token');
-await fetch('http://localhost:8000/api/v1/user/profile/', {
-    method: 'PATCH',
-    headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-        username: name.trim(),
-        preferences: { preferred_name: name.trim() }
-    })
-});
-```
-
-
-After Step 4 (Permissions), send permissions:
-```typescript
-// In StepPermissions Complete Setup handler:
-await fetch('http://localhost:8000/api/v1/user/permissions/', {
-    method: 'PATCH',
-    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ level_2_granted: level2 })
-});
-```
-
-#### 11.2: Add EULA to Permissions Step
-**File:** `frontend/src/pages/Onboarding.tsx` — `StepPermissions` component
-
-Add below the Level 2 toggle card:
-- A scrollable `<div>` (max-h: 150px, overflow-y: auto) containing the EULA text from `docs/EULA_PRIVACY_POLICY.md`
-- A mandatory checkbox: `"I have read and agree to the EULA and Privacy Policy"`
-- The "Complete Setup" button must be `disabled` until the checkbox is checked AND `eulaAccepted === true`
-- On acceptance, store `localStorage.setItem('pookie_eula_accepted', 'true')`
-
-#### 11.3: Fix WebSocket Conversation ID
-**File:** `frontend/src/pages/Dashboard.tsx`
-
-Replace hardcoded `conversationId: 'default'` with a real UUID:
-```typescript
-// Add state:
-const [conversationId] = useState(() => {
-    const stored = localStorage.getItem('pookie_conversation_id');
-    if (stored) return stored;
-    const newId = crypto.randomUUID();
-    localStorage.setItem('pookie_conversation_id', newId);
-    return newId;
-});
-
-// Pass to hook:
-const { ... } = useAgentSocket({ token, conversationId });
-```
-
-#### 11.4: Add Zustand State Management
-Install: `npm install zustand @tanstack/react-query`
-
-Create `frontend/src/store/useAppStore.ts`:
-```typescript
-import { create } from 'zustand';
-
-interface AppState {
-    token: string | null;
-    username: string;
-    conversationId: string;
-    eulaAccepted: boolean;
-    setToken: (t: string | null) => void;
-    setUsername: (u: string) => void;
-}
-
-export const useAppStore = create<AppState>((set) => ({
-    token: localStorage.getItem('pookie_token'),
-    username: 'Agent',
-    conversationId: localStorage.getItem('pookie_conversation_id') || crypto.randomUUID(),
-    eulaAccepted: localStorage.getItem('pookie_eula_accepted') === 'true',
-    setToken: (t) => set({ token: t }),
-    setUsername: (u) => set({ username: u }),
-}));
-```
-
-Wrap `main.tsx` with `QueryClientProvider`.
-Replace all `localStorage.getItem('pookie_token')` calls in Dashboard/Onboarding with Zustand store.
-
-#### 11.5: Persist Conversations to MongoDB
-**File:** `backend/core/agent/tasks.py`
-
-At the end of `process_agent_command`, before the `done` status push, add:
-```python
-from core.conversations.models import Conversation, Message, MessageMetadata
-import datetime
-
-# Find or create conversation
-conv = Conversation.objects(conversation_id=conversation_id).first()
-if not conv:
-    conv = Conversation(conversation_id=conversation_id, user_id=user_id)
-
-user_msg = Message(role='user', content=text, metadata=MessageMetadata(input_type='text', llm_model='deepseek-ai/deepseek-v4-flash'))
-agent_msg = Message(role='assistant', content=response_text, metadata=MessageMetadata(input_type='text', llm_model='deepseek-ai/deepseek-v4-flash'))
-
-conv.messages.append(user_msg)
-conv.messages.append(agent_msg)
-conv.last_updated = datetime.datetime.now(datetime.timezone.utc)
-conv.save()
-```
-
----
-
-## PHASE 3.5: Hardening Sprint — Make POOKIE a Real Agent
-
-> **AI RULE:** This entire phase MUST be completed before Step 17 (Electron packaging). Do not skip ahead. POOKIE must be a functional, safe, intelligent AI agent before it gets wrapped into a desktop app.
-
----
-
-### ➡️ Step 12: OS-Level Tool Registration & Agent Intelligence
-
-**Prerequisites:** Step 11 fully complete.
-**Goal:** Transform POOKIE from a chatbot into an actual OS-level AI agent.
-
-#### 12.1: Core System Tools
-**File:** `backend/core/agent/tools.py` (NEW FILE)
-
-Register the following LangChain `@tool` functions:
-
-| Tool | Function | Description | Permission |
-|---|---|---|---|
-| `open_application` | `subprocess.Popen()` | Opens any installed app by name (Chrome, VS Code, Notepad, etc.) | Level 2 |
-| `run_shell_command` | `subprocess.run()` | Runs PowerShell/bash commands, returns stdout/stderr | Level 2 |
-| `get_system_info` | `psutil` | Returns CPU %, RAM %, disk usage, battery, OS info | Level 1 (safe) |
-| `get_current_time` | `datetime` | Returns current date/time (already exists — move here) | Level 1 |
-| `control_volume` | `pycaw` (Win) / `amixer` (Linux) | Set, mute, or get system volume | Level 2 |
-| `web_search` | DuckDuckGo API / SerpAPI | Searches the web and returns top results | Level 1 |
-
-#### 12.2: File System Tools
-**File:** `backend/core/agent/tools.py`
-
-| Tool | Function | Description | Permission |
-|---|---|---|---|
-| `read_file` | `open().read()` | Reads contents of a local file by path | Level 2 |
-| `write_file` | `open().write()` | Creates or overwrites a file at given path | Level 2 |
-| `search_files` | `glob` / `os.walk` | Searches for files by name, extension, or pattern in a directory | Level 2 |
-| `list_directory` | `os.listdir()` | Lists files and folders in a given directory | Level 2 |
-
-#### 12.3: Command Safety Layer
-**File:** `backend/core/agent/safety.py` (NEW FILE)
-
-1. **Command Blacklist** — Block dangerous patterns before execution:
-   - `rm -rf /`, `format`, `del /f /s /q`, `:(){ :|:& };:`, `mkfs`, `dd if=`, `shutdown`, `reg delete`
-   - Regex-based matching for obfuscation attempts
-2. **Path Sandboxing** — File tools can only access user home directory by default, never system directories (`C:\Windows`, `/etc`, `/usr/bin`)
-3. **Output Sanitization** — Truncate tool output to 2000 chars max to prevent context window overflow
-
-#### 12.4: Permission Enforcement Layer
-**File:** `backend/core/agent/permissions.py` (NEW FILE)
-
-Before any tool executes:
-```python
-def check_permission(user_id: str, required_level: int) -> bool:
-    user = User.objects(user_id=user_id).first()
-    if required_level == 1:
-        return True  # Level 1 tools are always allowed
-    if required_level == 2:
-        return user.permissions.level_2_granted
-    if required_level == 3:
-        return False  # Level 3 always requires manual UAC prompt
-```
-
-If permission is denied, the tool returns: `"I don't have permission to do that. You can enable this in Settings > Permissions."`
-
-#### 12.5: Command Logging
-**File:** `backend/core/agent/models.py` (NEW FILE)
-
-Create `CommandLog` MongoEngine model:
-```python
-class CommandLog(me.Document):
-    log_id = me.StringField(default=lambda: str(uuid.uuid4()), unique=True)
-    user_id = me.StringField(required=True)
-    conversation_id = me.StringField(required=True)
-    tool_name = me.StringField(required=True)       # e.g., "open_application"
-    tool_input = me.StringField()                    # e.g., "chrome"
-    tool_output = me.StringField()                   # e.g., "Chrome opened successfully"
-    status = me.StringField(choices=["success", "denied", "error", "blocked"])
-    executed_at = me.DateTimeField(default=datetime.now(timezone.utc))
-    meta = { 'collection': 'command_logs', 'indexes': ['user_id', '-executed_at'] }
-```
-
-Every tool execution MUST create a log entry before returning.
-
-#### 12.6: Agent Personality & System Prompt Refinement
-**File:** `backend/core/agent/llm_agent.py`
-
-Rewrite `self.system_prompt` with:
-- Rich personality traits (friendly, witty, efficient)
-- Awareness of available tools and when to use them
-- Clear rules: never auto-run destructive commands, always confirm deletes
-- Context about the user's OS and system capabilities
-- Instruction to prefer tool calls over telling the user to do things manually
-
-#### 12.7: Wire Tools into Agent
-**File:** `backend/core/agent/llm_agent.py`
-
-- Import all tools from `tools.py`
-- Register in `self.tools = [open_application, run_shell_command, ...]`
-- Pass `user_id` context through tool calls so permission checks work
-
----
-
-### ⬜ Step 13: Reminders & Scheduled Tasks
+### ➡️ Step 12.5: Task Dashboard UI Overhaul
 
 **Prerequisites:** Step 12 complete.
-**Goal:** Allow POOKIE to set reminders and schedule tasks.
 
-#### 13.1: Reminder Model
-**File:** `backend/core/tasks/models.py`
+**File:** `frontend/src/pages/Dashboard.tsx`
+
+Replace chat-centric UI with task dashboard layout (Mocking API data for now):
+
+#### 12.5.1: Task Feed (replaces Voice/Chat tabs)
+- Each task = one card showing: command, plan steps, execution status, result.
+- Step-by-step progress within each card.
+- Single command input bar at the bottom.
+
+#### 12.5.2: Utility Sidebar Sections
+- Replace `Knowledge` and `Vault` with `Settings`, `Devices`, `Memory`, and `Contacts`.
+- Create UI shells for these sections (they will be wired to the backend in later steps).
+
+---
+
+## PHASE 4: Setu MVP Sprint 🔴 DEADLINE: JULY 20, 2026
+
+> This phase is broken down into logical sub-phases (milestones). Commit and push to GitHub when each sub-phase is completed.
+
+---
+
+### PHASE 4A: Identity, Voices & Reminders (Milestone 1)
+*Goal: Secure user authentication, Hindi/English STT/TTS setup, and reminder scheduling.*
+*Git Action: Commit and push to GitHub upon completing Step 14.*
+
+---
+
+### ➡️ Step 13: OAuth Integration (Google + GitHub)
+
+**Why first:** Everything downstream (cross-device, multi-user data isolation) requires real user identity.
+
+#### 13.1: Backend — OAuth Endpoints
+**Files:** `backend/core/users/views.py`, `backend/core/users/auth.py`
 
 ```python
-class Reminder(me.Document):
-    reminder_id = me.StringField(unique=True)
-    user_id = me.StringField(required=True)
-    title = me.StringField(required=True)
-    description = me.StringField()
-    remind_at = me.DateTimeField(required=True)
-    status = me.StringField(choices=["pending", "fired", "cancelled"], default="pending")
-    created_at = me.DateTimeField(default=datetime.now(timezone.utc))
+# POST /api/v1/auth/google/
+# Body: { "id_token": "<Google ID token from frontend>" }
+# → Verify token with Google API → find or create User → return JWT pair
+
+# POST /api/v1/auth/github/
+# Body: { "code": "<GitHub OAuth code from frontend>" }
+# → Exchange code for access token → fetch GitHub user → find or create User → return JWT pair
 ```
 
-#### 13.2: Reminder API Endpoints
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/v1/reminders/` | `GET` | List user's reminders |
-| `/api/v1/reminders/` | `POST` | Create a new reminder |
-| `/api/v1/reminders/{id}/` | `DELETE` | Cancel a reminder |
+- User `auth_provider` = `"google"` or `"github"`
+- `password_hash` = `null` always
+- On first login → set `is_active=True`, create default preferences
 
-#### 13.3: Reminder Tool
-Register a `set_reminder` LangChain tool so the agent can create reminders from natural language:
-- "Remind me to call mom at 6 PM" → parses time → creates Reminder document
+#### 13.2: Environment Variables
+```env
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GITHUB_CLIENT_ID=your_github_client_id
+GITHUB_CLIENT_SECRET=your_github_client_secret
+```
 
-#### 13.4: Celery Beat Scheduler
-Use `celery-beat` to check for due reminders every 30 seconds and push a WebSocket notification to the user's active session.
+#### 13.3: Frontend — OAuth Buttons
+**File:** `frontend/src/components/Login.tsx`
+- "Continue with Google" → Google OAuth2 popup → receive `id_token` → POST to `/api/v1/auth/google/`
+- "Continue with GitHub" → redirect to GitHub OAuth → receive `code` → POST to `/api/v1/auth/github/`
+- On success: store JWT in Zustand → redirect to `/onboarding` (first time) or `/dashboard`
+
+#### 13.4: URL Registration
+**File:** `backend/setu/urls.py`
+```python
+path('api/v1/auth/google/', GoogleOAuthView.as_view()),
+path('api/v1/auth/github/', GitHubOAuthView.as_view()),
+```
 
 ---
 
-### ⬜ Step 14: OAuth Integration
+### ⬜ Step 13.5: Reminders & Scheduled Tasks
 
 **Prerequisites:** Step 13 complete.
-**Goal:** Add Google and GitHub OAuth login so users don't need manual email/password registration.
 
-#### 14.1: Google OAuth Setup
-- Register OAuth app in Google Cloud Console
-- Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to `.env`
-- Configure `SOCIALACCOUNT_PROVIDERS` in `settings.py`
-- Create `/api/v1/auth/google/` endpoint using `dj-rest-auth`
+#### 13.5.1: Reminder REST API & Serializer
+**Files:** `backend/core/tasks/views.py`, `backend/core/tasks/serializers.py`
+- Create `ReminderSerializer` for the `Reminder` MongoEngine model.
+- Validate that `trigger_at` is in the future.
+- Use `dateparser` to parse natural language times if needed.
+- Implement views:
+  - `GET /api/v1/reminders/` → returns active user reminders (`is_completed=False`)
+  - `POST /api/v1/reminders/` → creates a reminder
+  - `DELETE /api/v1/reminders/{id}/` → cancels/deletes a reminder
 
-#### 14.2: GitHub OAuth Setup
-- Register OAuth app in GitHub Developer Settings
-- Add `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` to `.env`
-- Create `/api/v1/auth/github/` endpoint
+#### 13.5.2: `set_reminder` Agent Tool
+**File:** `backend/core/agent/tools.py`
+- Add `@tool` `set_reminder(title: str, trigger_at: str, description: str = "") -> str`:
+  - `trigger_at` should accept absolute ISO timestamp or natural language strings (e.g. "tomorrow at 5pm", "in 15 minutes").
+  - Parse `trigger_at` using `dateparser.parse()`.
+  - Save `Reminder` document with `user_id`, `title`, `trigger_at`, and `is_completed=False`.
 
-#### 14.3: Frontend OAuth Buttons
-**File:** `frontend/src/components/Login.tsx`
-- Add "Continue with Google" and "Continue with GitHub" buttons above the email form
-- On success, receive JWT token → store in Zustand → redirect to onboarding/dashboard
-- Keep the manual email/password option as a fallback
+#### 13.5.3: Celery Beat Scheduler
+**Files:** `backend/setu/celery.py`, `backend/core/tasks/tasks.py`
+- Create a Celery task `check_reminders` scheduled via Celery Beat (runs every 30 seconds).
+- Query MongoDB for reminders where `trigger_at <= now` and `is_completed=False`.
+- For each matching reminder:
+  - Send a real-time WebSocket alert to the user's active session (`AgentStreamConsumer` channel group) with `chunk_type: "reminder_alert"` and payload.
+  - Mark `is_completed=True` and save.
+
+#### 13.5.4: URL Registration
+**File:** `backend/setu/urls.py`
+- Register endpoints: `/api/v1/reminders/` and `/api/v1/reminders/<reminder_id>/`.
 
 ---
 
-### ⬜ Step 15: Full-Stack Refinement
+### ⬜ Step 14: Multilingual STT + TTS Voice Selection
+
+**Prerequisites:** Step 13.5 complete.
+
+
+#### 14.1: STT Model Swap
+**File:** `backend/core/ai/stt.py`
+- Change `WhisperModel('small.en')` → `WhisperModel('small')` (multilingual)
+- Auto-detect language from transcription result
+- Pass detected language code to TTS for matching voice selection
+
+#### 14.2: TTS Voice Selection
+**File:** `backend/core/ai/tts.py`
+- Add `lang_code` and `gender` parameters to `TTSEngine.__init__`
+- English Female: `KPipeline(lang_code='a')`, voice `af_heart`
+- English Male: `KPipeline(lang_code='a')`, voice `am_echo`
+- Hindi Female: `KPipeline(lang_code='h')`, voice `hf_alpha`
+- Hindi Male: `KPipeline(lang_code='h')`, voice `hm_omega`
+- Load user's `tts_voice_gender` and `language` from their preferences on agent init
+
+#### 14.3: Language Preference Wiring
+- `SetuAgent.__init__` reads `user.preferences.language` and `tts_voice_gender`
+- Passes correct lang_code + voice to `TTSEngine`
+- Celery task `process_agent_command` fetches user prefs before invoking agent
+
+---
+
+### PHASE 4B: Local Efficiency & Cache (Milestone 2)
+*Goal: Implement local PyTorch intent classification and Redis semantic caching to optimize response times and API quota usage.*
+*Git Action: Commit and push to GitHub upon completing Step 16.*
+
+---
+
+### ⬜ Step 15: Intent Pre-Classifier (PyTorch)
 
 **Prerequisites:** Step 14 complete.
-**Goal:** Polish every aspect of the frontend and backend for a premium, production-quality experience.
 
-#### 15.1: Frontend Cleanup
-- **Remove dead UI:** Remove or repurpose the "Images" tab (currently does nothing)
-- **Settings Page:** Create a `/dashboard/settings` view with:
-  - Permission toggles (Level 2 on/off)
-  - Theme/accent color picker
-  - Barge-in sensitivity slider
-  - Logout button
-- **Skeleton Loading Screens:** Add shimmer placeholders while data loads
-- **Error Boundaries:** Wrap major sections in React error boundaries with graceful fallback UI
-- **Real Microphone Test:** Wire the onboarding mic test to actually capture audio and visualize waveform
+**Purpose:** Classify commands BEFORE hitting the LLM. Saves 60–70% of API calls.
 
-#### 15.2: Backend Refinement
-- **Fix Bug B4:** Verify `RefreshToken` creation uses `.save()` not `.objects.create()`
-- **Optimize Queries:** Add missing indexes, ensure no N+1 queries
-- **Rate Limiting:** Add throttling to auth endpoints (prevent brute force)
-- **Input Validation:** Sanitize all user inputs in serializers (max lengths, allowed characters)
-- **Logging:** Add structured Python logging (replace all `print()` with `logging.info/warning/error`)
+#### 15.1: Train Classifier
+**File:** `ai/intent_classifier/train.py`
 
-#### 15.3: Agent Intelligence Tuning
-- Test agent with 50+ diverse commands and refine system prompt based on failure patterns
-- Add conversation context window management (trim old messages to prevent token overflow)
-- Improve tool selection accuracy with few-shot examples in system prompt
+Classes:
+- `OPEN_APP_LAPTOP` — "Open Chrome", "Launch VS Code"
+- `OPEN_APP_PHONE` — "Open Instagram on my phone", "Open YouTube"
+- `SYSTEM_INFO` — "What's my battery?", "What time is it?"
+- `REPEAT_LAST` — "Do that again", "Repeat"
+- `TIME_DATE` — "What time is it?", "What's today's date?"
+- `COMPLEX_TASK` — Everything else → send to LLM
+
+Training data: ~200 examples per class. Use DistilBERT fine-tuning or a simple LSTM.
+Export to ONNX: `ai/intent_classifier/hey_setu_intent.onnx`
+
+#### 15.2: Inference Integration
+**File:** `backend/core/ai/classifier.py`
+```python
+class IntentClassifier:
+    def __init__(self): # Load ONNX model once at startup
+    def classify(self, text: str) -> str: # Returns intent class string
+```
+
+#### 15.3: Agent Pipeline Integration
+**File:** `backend/core/agent/tasks.py`
+```python
+intent = classifier.classify(user_command)
+if intent in DIRECT_EXECUTION_INTENTS:
+    result = execute_direct(intent, user_command)  # No LLM
+else:
+    result = agent.invoke(user_command)  # Full LLM pipeline
+```
 
 ---
 
-### ⬜ Step 15.5: Security Audit
+### ⬜ Step 16: Reliability Architecture (Redis Semantic Cache + Hardening)
 
 **Prerequisites:** Step 15 complete.
-**Goal:** Harden POOKIE against real-world attack vectors before packaging.
 
-#### Security Checklist:
-1. **CORS Lock-down:** Replace `CORS_ALLOW_ALL_ORIGINS = True` with explicit whitelist (`localhost:5173`, `localhost:5174`)
-2. **Prompt Injection Testing:** Test 20+ prompt injection attacks against the agent and verify the system prompt holds
-3. **Command Blacklist Validation:** Attempt to bypass the safety layer with encoded/obfuscated commands
-4. **Level 3 UAC Prompts:** Implement OS-level confirmation dialogs for admin actions (Windows UAC / Linux polkit)
-5. **Dependency Audit:** Run `safety check` (Python) and `npm audit` (Node) — fix all critical/high vulnerabilities
-6. **JWT Security:** Verify token expiration, rotation, and revocation logic works correctly
-7. **WebSocket Authentication:** Verify unauthenticated connections are rejected with code 4001
-8. **File Path Traversal:** Test that `read_file`/`write_file` tools cannot escape the sandboxed directory
+#### 16.1: Redis Semantic Cache
+**File:** `backend/core/agent/cache.py`
+- Replace `InMemoryCache` with Redis-backed semantic cache
+- Use sentence-transformers (`all-MiniLM-L6-v2`) to embed queries
+- Cache key = cosine similarity search in Redis (threshold: 0.92)
+- "Open Chrome" / "Launch Chrome" / "Start Chrome" → same cache entry
+- TTL: 1 hour for cached results
 
----
+#### 16.2: Context Window Compression
+**File:** `backend/core/agent/context.py`
+- Keep last 5 messages in full
+- Older messages → summarize into 1 line via fast LLM call → store in MongoDB with `compressed: true`
+- Inject summary + last 5 into system prompt
 
-### ⬜ Step 16: Electron Desktop Integration
+#### 16.3: Proactive Rate Limit Routing
+**File:** `backend/core/agent/llm_agent.py`
+- Track API call count per provider in Redis (rolling 60-second window)
+- If primary provider hits 80% of limit → route to secondary before failure
+- Zero failures, zero retries wasted
 
-**Prerequisites:** Steps 12–15.5 ALL complete. POOKIE must be a fully functional, secure agent before packaging.
+#### 16.4: Request Deduplication
+**File:** `backend/core/agent/tasks.py`
+- Hash command text + user_id + 10-second timestamp window
+- Store hash in Redis with 10-second TTL
+- If duplicate: return in-progress result instead of new LLM call
 
-**Tasks:**
-1. Install: `npm install electron electron-builder --save-dev`
-2. Create `frontend/electron/main.js` — BrowserWindow config (transparent, frameless, always-on-top option)
-3. Add `package.json` scripts: `"electron": "electron ."`, `"build:electron": "vite build && electron-builder"`
-4. System tray: `Tray` + `Menu` from Electron — icon, "Open POOKIE", "Quit"
-5. Global hotkey: `globalShortcut.register('Alt+Space', ...)` — show/hide main window
-6. `electron-builder` config: Windows NSIS target, Linux AppImage target
-7. Auto-start backend services (Daphne + Celery + Redis) when Electron launches
-
----
-
-### ⬜ Step 17: Custom Wake Word — "Hey Pookie"
-
-**Prerequisites:** Step 16 (Electron) complete. Wake word only works inside the desktop app — browsers cannot have always-on microphone access.
-**Goal:** Say "Hey Pookie" to activate the Electron app from anywhere on your desktop.
-
-#### 17.1: Collect Training Data
-- Record 50+ positive samples of "Hey Pookie" in different voices, tones, speeds
-- Record 200+ negative samples (random speech, background noise, similar-sounding words)
-- Use OpenWakeWord's data format requirements
-
-#### 17.2: Train the Model
-- Use OpenWakeWord's fine-tuning pipeline
-- Export `.onnx` model file → save to `backend/core/wake_word/models/hey_pookie.onnx`
-
-#### 17.3: Integrate into Detector
-**File:** `backend/core/wake_word/detector.py`
-- Replace `wakeword_models=['hey_jarvis']` with `wakeword_models=['path/to/hey_pookie.onnx']`
-- Update detection threshold if needed
-- Fix Bug B1: Change print string from "Hey Jarvis" to "Hey Pookie" in `listener.py`
-
-#### 17.4: Wire Wake Word into Electron
-- Run wake word detector as a background thread inside Electron's main process
-- On detection: bring POOKIE window to foreground → auto-activate microphone → begin listening
-- Add wake word sensitivity slider to Settings page
+#### 16.5: Graceful Degradation
+If all providers fail:
+```
+"I'm having a little trouble right now. Your command is queued — I'll retry in 30 seconds."
+```
+- Store command in Redis queue → auto-retry via Celery
 
 ---
 
-## PHASE 4: Mobile App (Android) ⬜ PENDING
-
-### Step 18: React Native Setup
-**Prerequisites:** Phase 3.5 fully complete, Electron app packaged.
-
-Do not start until Phase 3.5 is complete.
-
-### Step 18.5: Firebase & Mobile Permissions
-Android Foreground Service, Firebase FCM push notifications, Accessibility Services.
+### PHASE 4C: Cross-Device Protocol & Peer Pairing (Milestone 3)
+*Goal: Build zeroconf device discovery, secure ECDH pairing handshake, and encrypted cross-device WSS command executor.*
+*Git Action: Commit and push to GitHub upon completing Step 17.*
 
 ---
 
-## PHASE 5: Packaging & Deployment ⬜ PENDING
+### ⬜ Step 17: Cross-Device Protocol (LAN WebSocket)
 
-### Step 19: Packaging & Deployment
-1. Dockerize: Django + Celery + Redis + MongoDB via Docker Compose
-2. `electron-builder` → `.exe` (Windows) + `.AppImage` (Linux)
-3. Landing page with GSAP + ScrollTrigger
+**Prerequisites:** Step 16 complete.
+**This is the core Setu feature.**
+
+#### 17.1: mDNS Advertiser (Laptop Side)
+**File:** `backend/core/cross_device/mdns.py`
+- Use `zeroconf` library to register service `_setu-sync._tcp.local.`
+- TXT records: `device_id`, `friendly_name`, `os`, `pairing_status`
+- Start advertising when Django starts (add to `apps.py` `ready()` hook)
+
+#### 17.2: Pairing Logic
+**File:** `backend/core/cross_device/pairing.py`
+- Generate 6-digit PIN on laptop
+- ECDH key exchange → derive AES-256 session key + HMAC key using HKDF
+- Store `DevicePairing` document in MongoDB (store HMAC of session key, not raw)
+- PIN expires after 5 minutes
+
+#### 17.3: Cross-Device WebSocket Consumer
+**File:** `backend/core/cross_device/consumers.py`
+```python
+class CrossDeviceConsumer(AsyncWebsocketConsumer):
+    # ws://laptop_ip:8000/ws/device/{device_id}/?token=<jwt>
+    # Receives command from phone → validates JWT + pairing → routes to agent
+    # Streams back result + optional screenshot
+```
+
+#### 17.4: DevicePairing Model
+**File:** `backend/core/cross_device/models.py`
+- See `DATABASE_SCHEMA.md` §2.5 for full schema
+
+#### 17.5: REST Endpoints
+```python
+# POST /api/v1/devices/pair/     → initiate pairing, returns PIN
+# GET  /api/v1/devices/          → list paired devices
+# DELETE /api/v1/devices/{id}/   → revoke pairing
+```
+
+#### 17.6: Security Checks
+- Reject connections from outside local subnet (`request.META['REMOTE_ADDR']`)
+- Timestamp + nonce replay prevention (Redis, 10-second TTL)
+- All phone commands pass through same `safety.py` blacklist
 
 ---
 
-## PHASE 6: Vanguard Features ⬜ PENDING
+### PHASE 4D: Laptop Automation Engine (Milestone 4)
+*Goal: Integrate Playwright browser automation, pywinauto native desktop control, confirmation flows, and screen capture streaming.*
+*Git Action: Commit and push to GitHub upon completing Step 21.*
 
-### Step 20: Cross-Device Spatial Handoff
-mDNS discovery, peer-to-peer WebSocket mesh, context migration payload
+---
 
-### Step 21: On-Screen Context Awareness
-`mss` screen capture → local OCR/VLM (Florence-2/Tesseract) → zero-retention policy
+### ⬜ Step 18: Browser Automation (Playwright)
 
-### Step 22: Algorithmic Personalization
-`user_lore` collection, adaptive system prompts, Visual DNA Orb shader seed
+**Prerequisites:** Step 17 complete.
+
+#### 18.1: Install & Setup
+```bash
+pip install playwright
+playwright install chromium
+```
+
+#### 18.2: Browser Tools
+**File:** `backend/core/agent/tools.py` — add:
+```python
+@tool
+def navigate_browser(url: str) -> str:
+    """Open browser and navigate to URL."""
+
+@tool
+def click_element(selector: str) -> str:
+    """Click a CSS selector or text on the current page."""
+
+@tool
+def type_into_field(selector: str, text: str) -> str:
+    """Type text into a form field."""
+
+@tool
+def get_page_content() -> str:
+    """Get the visible text content of the current page."""
+
+@tool
+def submit_form(selector: str = "form") -> str:
+    """Submit a form on the current page."""
+```
+
+#### 18.3: Playwright Session Management
+**File:** `backend/core/agent/browser.py`
+- Single persistent `BrowserContext` per user session
+- Async Playwright inside Celery using `asyncio.run()`
+- Auto-close browser after 5 minutes of inactivity
+
+#### 18.4: Agent System Prompt Update
+- Add browser tools to system prompt examples
+- "Open Chrome and go to YouTube" → `navigate_browser("https://youtube.com")`
+
+---
+
+### ⬜ Step 19: Desktop Automation (pywinauto)
+
+**Prerequisites:** Step 18 complete.
+
+#### 19.1: Install
+```bash
+pip install pywinauto
+```
+
+#### 19.2: Desktop Tools
+**File:** `backend/core/agent/tools.py` — add:
+```python
+@tool
+def find_window(app_name: str) -> str:
+    """Find an open application window by name."""
+
+@tool
+def click_desktop_element(window_title: str, element_text: str) -> str:
+    """Click a button or element in a native desktop app."""
+
+@tool
+def type_into_desktop_field(window_title: str, field_name: str, text: str) -> str:
+    """Type into a field in a native desktop app."""
+```
+
+#### 19.3: Permission Gate
+- All pywinauto tools require `level_2_granted = True`
+- Check via `check_permission(user_id, required_level=2)` before execution
+
+---
+
+### ⬜ Step 20: Task Plan Confirmation Flow
+
+**Prerequisites:** Step 19 complete.
+
+#### 20.1: Plan Generation
+**File:** `backend/core/agent/planner.py`
+- For commands that resolve to 2+ tool calls → generate plan before executing
+- Format:
+```json
+{
+  "plan": [
+    {"step": 1, "action": "Open Chrome", "tool": "open_application"},
+    {"step": 2, "action": "Navigate to YouTube", "tool": "navigate_browser"}
+  ],
+  "requires_confirmation": true
+}
+```
+
+#### 20.2: WebSocket Plan Event
+- Stream `chunk_type: "plan"` with plan JSON to frontend before execution
+- Frontend shows plan with `[Proceed] [Cancel]` buttons
+- Wait for user response via WebSocket message
+- `trust_mode: true` in preferences → skip confirmation for standard tasks
+
+#### 20.3: Single-Step Commands
+- Single-step commands (e.g., "Open Chrome") → execute immediately, no confirmation
+
+---
+
+### ⬜ Step 21: Screenshot Feedback System
+
+**Prerequisites:** Step 20 complete.
+
+#### 21.1: Screenshot Capture
+**File:** `backend/core/agent/tools.py` — add:
+```python
+@tool
+def capture_screenshot() -> str:
+    """Capture the current laptop screen. Returns base64-encoded PNG."""
+    # Uses mss library. Compress to 70% JPEG quality before encoding.
+    # Buffer purged immediately after encoding — not stored to disk.
+```
+
+#### 21.2: Stream to Phone
+- After each significant task step, check user's `screenshot_preference`
+- `always` → auto-capture and stream via WebSocket
+- `ask` → send `chunk_type: "screenshot_prompt"` → user confirms on phone
+- `never` → skip entirely
+
+#### 21.3: Screenshot Not Stored
+- Screenshot bytes exist only in memory during encoding
+- Never written to disk, never stored in MongoDB
+- Sent as base64 in WebSocket frame only
+
+---
+
+### PHASE 4E: Memory Integration (Milestone 5)
+*Goal: Build user profile memory manager, contacts list, and natural language command repeat logic.*
+*Git Action: Commit and push to GitHub upon completing Step 22.*
+
+---
+
+### ⬜ Step 22: Persistent Memory & Contacts Store
+
+**Prerequisites:** Step 21 complete.
+
+#### 22.1: Memory Manager
+**File:** `backend/core/memory/manager.py`
+```python
+class MemoryManager:
+    def extract_and_store(self, user_id: str, conversation: list): ...
+    # After each task: LLM call to extract key facts → store in user_memory
+    
+    def inject_into_prompt(self, user_id: str) -> str: ...
+    # Returns formatted memory string to prepend to system prompt
+    
+    def get_all(self, user_id: str) -> list: ...
+    def delete(self, user_id: str, memory_id: str): ...
+```
+
+#### 22.2: UserMemory & Contact Models
+**File:** `backend/core/memory/models.py`
+- See `DATABASE_SCHEMA.md` §2.6 and §2.7 for full schemas
+
+#### 22.3: Contact Lookup Tool
+**File:** `backend/core/agent/tools.py` — add:
+```python
+@tool
+def lookup_contact(name: str) -> str:
+    """Look up a contact by name or alias. Returns phone, email, WhatsApp."""
+```
+
+#### 22.4: REST Endpoints
+```python
+# GET    /api/v1/memory/           → list user memories
+# DELETE /api/v1/memory/{id}/      → delete a memory
+# GET    /api/v1/contacts/         → list contacts
+# POST   /api/v1/contacts/         → add contact
+# DELETE /api/v1/contacts/{id}/    → delete contact
+```
+
+#### 22.5: Natural Language References
+**File:** `backend/core/agent/context.py`
+- Last command stored in Redis per user (`last_command:{user_id}`)
+- Intent classifier handles: `REPEAT_LAST` → re-execute from Redis
+- "Do that again" / "Repeat" / "What did you just do?" → handled without LLM call
+
+---
+
+### PHASE 4F: Onboarding & Dashboard UI Overhaul (Milestone 6)
+*Goal: Overhaul the onboarding wizard to 8 steps and transform the laptop dashboard UI from chat-centric to task-centric.*
+*Git Action: Commit and push to GitHub upon completing Step 25.*
+
+---
+
+### ⬜ Step 23: Onboarding Wizard Upgrade (8 Steps)
+
+**Prerequisites:** Step 22 complete.
+
+**File:** `frontend/src/pages/Onboarding.tsx`
+
+Replace 4-step wizard with 8 steps:
+
+| Step | Route | Content |
+|---|---|---|
+| 1 | `/onboarding/auth` | OAuth sign-in (Google / GitHub) |
+| 2 | `/onboarding/name` | "What should I call you?" |
+| 3 | `/onboarding/language` | Choose language: English / Hindi / Auto-detect |
+| 4 | `/onboarding/voice` | Choose voice: Female ♀ / Male ♂ (play sample) |
+| 5 | `/onboarding/permissions` | L2 permission toggle + EULA scroll + mandatory checkbox |
+| 6 | `/onboarding/pair` | Pair your phone — show 6-digit PIN, QR code |
+| 7 | `/onboarding/screenshot` | Screenshot preference: Always / Ask / Never |
+| 8 | `/onboarding/done` | "Hey Setu, I'm ready" → animated confirmation → `/dashboard` |
+
+- Each step PATCH `/api/v1/user/profile/` on Next press
+- Step 6 polls `/api/v1/devices/` until a device is paired (or skip button)
+- Framer Motion slide transitions between steps
+
+---
+
+### PHASE 4G: Mobile Client Integration (Milestone 7)
+*Goal: Develop the React Native phone application for voice/text execution over LAN, showing task status and screenshots.*
+*Git Action: Commit and push to GitHub upon completing Step 24.*
+
+---
+
+### ⬜ Step 24: React Native Phone App
+
+**Prerequisites:** Step 25 complete.
+
+**Directory:** `mobile/`
+
+#### 24.1: App Setup
+```bash
+cd mobile
+npx react-native init SetuMobile --template react-native-template-typescript
+```
+
+#### 24.2: Core Screens
+- **Pairing screen** — mDNS scan for Setu laptops → show found devices → enter PIN
+- **Command screen** — Large mic button + text input → send to laptop WebSocket
+- **Task feed** — Live stream of task steps + screenshots from laptop
+- **Settings** — Connected device, language, screenshot preference
+
+#### 24.3: Voice Input
+- `react-native-voice` for STT on phone (backup to laptop STT)
+- Hold-to-record mic button
+
+#### 24.4: WebSocket Connection
+- Connect to `ws://{laptop_ip}:8000/ws/device/{device_id}/?token=<jwt>`
+- Auto-reconnect on disconnect with exponential backoff
+
+#### 24.5: Deep Links (App Launch on Phone)
+```javascript
+const DEEP_LINKS = {
+  instagram: 'instagram://',
+  youtube: 'youtube://',
+  whatsapp: 'whatsapp://send',
+  // ... etc
+}
+// On OPEN_APP_PHONE intent: Linking.openURL(DEEP_LINKS[app])
+```
+
+---
+
+## PHASE 5: Custom Wake Word ⬜ POST-MVP
+
+### Step 26: "Hey Setu" Wake Word Training
+**Prerequisites:** All Phase 4 steps complete.
+
+1. Record 50+ "Hey Setu" samples + 200+ negative samples
+2. Train via OpenWakeWord fine-tuning pipeline
+3. Export `.onnx` → `backend/core/wake_word/models/hey_setu.onnx`
+4. Replace `wakeword_models=['hey_jarvis']` with custom model path
+5. Wire to Electron main process background thread
+
+---
+
+## PHASE 6: Hardening & Packaging ⬜ POST-MVP
+
+### Step 27: Full-Stack Security Audit
+1. `CORS_ALLOW_ALL_ORIGINS = True` → replace with explicit whitelist
+2. Test 20+ prompt injection attacks against agent system prompt
+3. Test 10+ command blacklist bypass attempts
+4. Verify LAN-only enforcement for cross-device
+5. Run `npm audit` + Python `safety check`
+6. Verify JWT expiry, rotation, and revocation logic
+
+### Step 28: Electron Desktop Packaging
+1. `npm install electron electron-builder --save-dev`
+2. `frontend/electron/main.js` — BrowserWindow (transparent, frameless, alwaysOnTop)
+3. System tray: icon, "Open Setu", "Quit"
+4. Global hotkey: `globalShortcut.register('Alt+Space', ...)`
+5. `electron-builder` — Windows NSIS `.exe` target
+6. Auto-start Daphne + Celery + Redis when Electron launches
 
 ---
 
 ## HOW TO RUN LOCALLY
 
-### Backend Services (run in 3 separate terminals)
+See `ENVIRONMENT_SETUP.md` for complete setup instructions.
+
+### Quick Start
 ```bash
 # Terminal 1: Django ASGI Server
-cd backend
-venv\Scripts\activate
-python manage.py runserver  # or: daphne pookie.asgi:application
+cd backend && venv\Scripts\activate
+daphne -b 0.0.0.0 -p 8000 setu.asgi:application
 
 # Terminal 2: Celery Worker
-cd backend
-venv\Scripts\activate
-celery -A pookie worker --loglevel=info --pool=solo
+cd backend && venv\Scripts\activate
+celery -A setu worker --loglevel=info --pool=solo
 
-# Terminal 3 (optional): Local Voice Loop
-cd backend
-venv\Scripts\activate
-python listener.py
-```
-
-### Frontend Dev Server
-```bash
-cd frontend
-npm run dev
+# Terminal 3: Frontend
+cd frontend && npm run dev
 # Open: http://localhost:5173
-```
 
-### Required Services (must be running)
-- **MongoDB:** `mongod` on port 27017
-- **Redis:** `redis-server` on port 6379
-
-### Environment Variables (`backend/.env`)
-```env
-NVIDIA_API_KEY=your_nvidia_api_key_here
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-GROQ_API_KEY=your_groq_api_key_here
+# Terminal 4 (optional): Local Voice Loop
+cd backend && python listener.py
 ```

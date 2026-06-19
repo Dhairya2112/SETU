@@ -6,11 +6,15 @@ channels==4.3.2
 daphne==4.2.1
 python-dotenv==1.2.2
 
-# Database & Tasks
+# Database, Tasks & System Tools
 pymongo==4.17.0
 motor==3.7.1
 celery==5.6.3
+django-celery-beat==2.8.1  # install with --no-deps (Django<6 constraint is stale; works fine on 6.0.5)
 redis==8.0.0
+psutil==7.2.2
+duckduckgo-search==8.1.1
+dateparser==1.2.0
 
 # LLM Framework (Strictly pinned to prevent API breaking changes)
 langchain==1.3.2

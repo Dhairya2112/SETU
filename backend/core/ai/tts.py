@@ -13,7 +13,7 @@ class TTSEngine:
         print("Kokoro TTS loaded.")
 
     def speak(self, text: str):
-        print(f"POOKIE (TTS): {text}")
+        print(f"Setu (TTS): {text}")
         
         # We don't stream playback chunk-by-chunk anymore because it causes unnatural gaps.
         # Since our responses are ultra-short (1-2 sentences), we generate the full audio and play it seamlessly.

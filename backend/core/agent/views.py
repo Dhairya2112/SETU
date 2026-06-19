@@ -12,10 +12,16 @@ class CommandView(APIView):
     def post(self, request):
         text = request.data.get('text')
         conversation_id = request.data.get('conversation_id')
-        
+
+        if not text or not text.strip():
+            return Response(
+                {'error': {'code': 'VALIDATION_ERROR', 'message': 'text field is required and cannot be empty.'}},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
-            
+
         from .tasks import process_agent_command
         task = process_agent_command.delay(text, conversation_id, request.user.user_id)
         
@@ -24,7 +30,7 @@ class CommandView(APIView):
             "conversation_id": conversation_id,
             "message_id": str(uuid.uuid4()),
             "status": "processing",
-            "websocket_channel": f"ws://api.pookie.app/ws/stream/{conversation_id}/"
+            "websocket_channel": f"ws://localhost:8000/ws/stream/{conversation_id}/"
         }, status=status.HTTP_202_ACCEPTED)
 
 class StatusView(APIView):

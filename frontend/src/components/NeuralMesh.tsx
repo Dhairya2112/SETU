@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 
+type ShapeType = 'circle' | 'triangle' | 'diamond' | 'square';
+
 export const NeuralMesh = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -10,20 +12,17 @@ export const NeuralMesh = () => {
     if (!ctx) return;
 
     let particles: Particle[] = [];
-    const particleCount = Math.min(75, Math.floor(window.innerWidth / 18));
-    const connectionDistance = 150;
-    const mouseDistance = 220;
+    // Increase count to feel like a rich constellation/cosmos (e.g. 150 particles)
+    const particleCount = Math.min(180, Math.floor(window.innerWidth / 8));
+    const connectionDistance = 120;
+    const mouseDistance = 180;
 
     let mouse = { x: -1000, y: -1000 };
     let time = 0;
     let animationFrameId: number;
 
-    // Slowly drifting colorful background nebulas with dynamic base hues
-    const nebulas = [
-      { x: 0.15, y: 0.25, r: 0.38, vx: 0.00015, vy: 0.0001, hue: 140, alpha: 0.08 }, // Mint base
-      { x: 0.85, y: 0.75, r: 0.48, vx: -0.0001, vy: 0.00015, hue: 270, alpha: 0.12 }, // Violet base
-      { x: 0.50, y: 0.50, r: 0.42, vx: 0.00008, vy: -0.0001, hue: 190, alpha: 0.10 }  // Cyan base
-    ];
+    // Single centered slowly drifting soft violet pulse representing Plum Voltage authority glow
+    const pulseCloud = { x: 0.5, y: 0.5, vx: 0.00005, vy: -0.00005, r: 0.45, alpha: 0.05 };
 
     class Particle {
       x: number;
@@ -35,52 +34,89 @@ export const NeuralMesh = () => {
       pulseSpeed: number;
       color: string;
       alpha: number;
+      shape: ShapeType;
 
       constructor() {
         this.x = Math.random() * canvas!.width;
         this.y = Math.random() * canvas!.height;
-        this.vx = (Math.random() - 0.5) * 0.25;
-        this.vy = (Math.random() - 0.5) * 0.25;
-        this.baseRadius = Math.random() * 1.8 + 0.6;
+        this.vx = (Math.random() - 0.5) * 0.15; // Slow drift
+        this.vy = (Math.random() - 0.5) * 0.15;
+        this.baseRadius = Math.random() * 2 + 1; // Size scale 2px - 6px diameter (1px - 3px radius)
         this.radius = this.baseRadius;
-        this.pulseSpeed = Math.random() * 0.015 + 0.005;
+        this.pulseSpeed = Math.random() * 0.01 + 0.003;
         
-        // Colors corresponding to theme accents
-        const rand = Math.random();
-        if (rand < 0.45) {
-          this.color = '130, 242, 168'; // Mint
-        } else if (rand < 0.85) {
-          this.color = '34, 211, 238';  // Cyan
+        // Random geometric primitive shape
+        const shapeRand = Math.random();
+        if (shapeRand < 0.25) {
+          this.shape = 'circle';
+        } else if (shapeRand < 0.5) {
+          this.shape = 'triangle';
+        } else if (shapeRand < 0.75) {
+          this.shape = 'diamond';
         } else {
-          this.color = '192, 132, 252'; // Violet
+          this.shape = 'square';
         }
-        this.alpha = Math.random() * 0.5 + 0.15;
+
+        // Colors corresponding to Dala design system:
+        // Plum Voltage (#8052ff) -> 128, 82, 255 (50% probability)
+        // Bone (#ffffff) -> 255, 255, 255 (30% probability)
+        // Lichen (#15846e) -> 21, 132, 110 (12% probability)
+        // Amber Spark (#ffb829) -> 255, 184, 41 (8% probability)
+        const rand = Math.random();
+        if (rand < 0.5) {
+          this.color = '128, 82, 255'; // Plum Voltage
+        } else if (rand < 0.8) {
+          this.color = '255, 255, 255'; // Bone
+        } else if (rand < 0.92) {
+          this.color = '21, 132, 110';   // Lichen
+        } else {
+          this.color = '255, 184, 41';   // Amber Spark
+        }
+
+        this.alpha = Math.random() * 0.35 + 0.15; // Softer professional alpha
       }
 
       update() {
         this.x += this.vx;
         this.y += this.vy;
 
-        // Bounce borders
-        if (this.x < 0 || this.x > canvas!.width) this.vx *= -1;
-        if (this.y < 0 || this.y > canvas!.height) this.vy *= -1;
+        // Wrap around borders for infinite loop look
+        if (this.x < 0) this.x = canvas!.width;
+        if (this.x > canvas!.width) this.x = 0;
+        if (this.y < 0) this.y = canvas!.height;
+        if (this.y > canvas!.height) this.y = 0;
 
-        // Subtle breathe animation
-        this.radius = this.baseRadius + Math.sin(time * this.pulseSpeed * 8) * 0.3;
+        // Gentle breath animation
+        this.radius = this.baseRadius + Math.sin(time * this.pulseSpeed * 4) * 0.4;
       }
 
       draw() {
         if (!ctx) return;
         ctx.beginPath();
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        const size = this.radius * 2;
         ctx.fillStyle = `rgba(${this.color}, ${this.alpha})`;
         
-        if (this.baseRadius > 1.8) {
-          ctx.shadowBlur = 6;
-          ctx.shadowColor = `rgba(${this.color}, 0.5)`;
+        if (this.shape === 'triangle') {
+          ctx.moveTo(this.x, this.y - this.radius);
+          ctx.lineTo(this.x + this.radius, this.y + this.radius);
+          ctx.lineTo(this.x - this.radius, this.y + this.radius);
+          ctx.closePath();
+          ctx.fill();
+        } else if (this.shape === 'diamond') {
+          ctx.moveTo(this.x, this.y - this.radius);
+          ctx.lineTo(this.x + this.radius, this.y);
+          ctx.lineTo(this.x, this.y + this.radius);
+          ctx.lineTo(this.x - this.radius, this.y);
+          ctx.closePath();
+          ctx.fill();
+        } else if (this.shape === 'square') {
+          ctx.rect(this.x - this.radius, this.y - this.radius, size, size);
+          ctx.fill();
+        } else {
+          // Circle
+          ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+          ctx.fill();
         }
-        ctx.fill();
-        ctx.shadowBlur = 0; // Reset
       }
     }
 
@@ -97,41 +133,36 @@ export const NeuralMesh = () => {
       if (!ctx || !canvas) return;
       time += 0.5;
 
-      // Cosmic background base
-      ctx.fillStyle = '#030108';
+      // Dark obsidian background base
+      ctx.fillStyle = '#030303';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Shifting auroral background clouds (screen composition for neon layering)
+      // Single very subtle violet pulse against infinite black
       ctx.globalCompositeOperation = 'screen';
-      nebulas.forEach(nb => {
-        nb.x += nb.vx;
-        nb.y += nb.vy;
-        
-        // Wrap/bounce within grid bounds
-        if (nb.x < -0.1 || nb.x > 1.1) nb.vx *= -1;
-        if (nb.y < -0.1 || nb.y > 1.1) nb.vy *= -1;
+      pulseCloud.x += pulseCloud.vx;
+      pulseCloud.y += pulseCloud.vy;
 
-        const px = nb.x * canvas.width;
-        const py = nb.y * canvas.height;
-        const rad = nb.r * Math.max(canvas.width, canvas.height);
+      if (pulseCloud.x < 0.2 || pulseCloud.x > 0.8) pulseCloud.vx *= -1;
+      if (pulseCloud.y < 0.2 || pulseCloud.y > 0.8) pulseCloud.vy *= -1;
 
-        const shiftedHue = (nb.hue + time * 0.04) % 360;
-        const colorString = `hsla(${shiftedHue}, 75%, 60%, ${nb.alpha})`;
-        const gradient = ctx.createRadialGradient(px, py, 0, px, py, rad);
-        gradient.addColorStop(0, colorString);
-        gradient.addColorStop(0.4, `hsla(${shiftedHue}, 75%, 60%, ${nb.alpha * 0.2})`);
-        gradient.addColorStop(1, `hsla(${shiftedHue}, 75%, 60%, 0)`);
+      const px = pulseCloud.x * canvas.width;
+      const py = pulseCloud.y * canvas.height;
+      const rad = pulseCloud.r * Math.max(canvas.width, canvas.height);
 
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(px, py, rad, 0, Math.PI * 2);
-        ctx.fill();
-      });
+      const gradient = ctx.createRadialGradient(px, py, 0, px, py, rad);
+      gradient.addColorStop(0, `rgba(128, 82, 255, ${pulseCloud.alpha})`);
+      gradient.addColorStop(0.5, `rgba(128, 82, 255, ${pulseCloud.alpha * 0.2})`);
+      gradient.addColorStop(1, 'rgba(128, 82, 255, 0)');
+
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(px, py, rad, 0, Math.PI * 2);
+      ctx.fill();
       ctx.globalCompositeOperation = 'source-over';
 
-      // Draw particle nodes and neural lines
+      // Draw particle nodes and constellation hairline lines
       for (let i = 0; i < particles.length; i++) {
-        for (let j = i; j < particles.length; j++) {
+        for (let j = i + 1; j < particles.length; j++) {
           const dx = particles[i].x - particles[j].x;
           const dy = particles[i].y - particles[j].y;
           const distance = Math.sqrt(dx * dx + dy * dy);
@@ -141,15 +172,15 @@ export const NeuralMesh = () => {
             ctx.moveTo(particles[i].x, particles[i].y);
             ctx.lineTo(particles[j].x, particles[j].y);
             
-            // Shifting line color opacity
-            const opacity = (1 - distance / connectionDistance) * 0.09;
-            ctx.strokeStyle = `rgba(130, 242, 168, ${opacity})`;
+            // Faint, thin hairline lines on the void in Plum Voltage (violet) or Bone (white)
+            const opacity = (1 - distance / connectionDistance) * 0.15;
+            ctx.strokeStyle = `rgba(128, 82, 255, ${opacity})`;
             ctx.lineWidth = 0.5;
             ctx.stroke();
           }
         }
 
-        // Mouse gravity pull and network illumination
+        // Mouse gravity pull (emergence and clustering)
         const dxMouse = particles[i].x - mouse.x;
         const dyMouse = particles[i].y - mouse.y;
         const distanceMouse = Math.sqrt(dxMouse * dxMouse + dyMouse * dyMouse);
@@ -159,35 +190,32 @@ export const NeuralMesh = () => {
           ctx.moveTo(particles[i].x, particles[i].y);
           ctx.lineTo(mouse.x, mouse.y);
           
-          const opacity = (1 - distanceMouse / mouseDistance) * 0.06;
-          ctx.strokeStyle = `rgba(34, 211, 238, ${opacity})`;
-          ctx.lineWidth = 0.6;
+          const opacity = (1 - distanceMouse / mouseDistance) * 0.12;
+          ctx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
+          ctx.lineWidth = 0.5;
           ctx.stroke();
           
-          // Soft magnetic pull
-          particles[i].x -= dxMouse * 0.006;
-          particles[i].y -= dyMouse * 0.006;
-          // Temporarily light up node
-          particles[i].alpha = Math.min(0.85, particles[i].alpha + 0.015);
+          // Soft magnetic clustering into organic forms
+          particles[i].x -= dxMouse * 0.005;
+          particles[i].y -= dyMouse * 0.005;
+          particles[i].alpha = Math.min(0.8, particles[i].alpha + 0.01);
         } else {
-          // Fade back to normal drift alpha
-          particles[i].alpha = Math.max(0.18, particles[i].alpha - 0.004);
+          particles[i].alpha = Math.max(0.2, particles[i].alpha - 0.003);
         }
 
         particles[i].update();
         particles[i].draw();
       }
 
-      // Mouse interactive radial pulse
+      // Mouse interactive radial pulse (violet light overlay)
       if (mouse.x > 0 && mouse.y > 0) {
         ctx.globalCompositeOperation = 'screen';
-        const mouseGlow = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 200);
-        mouseGlow.addColorStop(0, 'rgba(34, 211, 238, 0.12)');
-        mouseGlow.addColorStop(0.5, 'rgba(192, 132, 252, 0.04)');
-        mouseGlow.addColorStop(1, 'rgba(0,0,0,0)');
+        const mouseGlow = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 160);
+        mouseGlow.addColorStop(0, 'rgba(128, 82, 255, 0.25)');
+        mouseGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = mouseGlow;
         ctx.beginPath();
-        ctx.arc(mouse.x, mouse.y, 200, 0, Math.PI * 2);
+        ctx.arc(mouse.x, mouse.y, 160, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalCompositeOperation = 'source-over';
       }
@@ -196,8 +224,9 @@ export const NeuralMesh = () => {
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      mouse.x = e.clientX;
-      mouse.y = e.clientY;
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
     };
 
     const handleMouseLeave = () => {

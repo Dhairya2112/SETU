@@ -26,7 +26,27 @@ export function useAudioAnalyser() {
         recognition.lang = 'en-US';
 
         recognition.onresult = (event: any) => {
-          const transcript = event.results[0][0].transcript;
+          let transcript = event.results[0][0].transcript;
+          
+          // Phonetic correction for misheard "Setu" wake word variations (Google/browser STT limits)
+          const lower = transcript.toLowerCase().trim();
+          const misheardPrefixes = [
+            'hey say to', 'hey set to', 'hey c2', 'hey c two', 
+            'hey seytu', 'hey sato', 'hey sito', 'hey statu',
+            'hey center', 'hey sentry'
+          ];
+          
+          const matchedPrefix = misheardPrefixes.find(p => lower.startsWith(p));
+          if (matchedPrefix) {
+            const regex = new RegExp(`^${matchedPrefix}`, 'i');
+            transcript = transcript.replace(regex, 'hey setu');
+          } else {
+            const singleNameMishears = ['say to', 'set to', 'c2', 'c two', 'seytu', 'sato', 'sito', 'statu', 'center', 'sentry'];
+            if (singleNameMishears.includes(lower)) {
+              transcript = 'setu';
+            }
+          }
+
           if (onTranscript && transcript.trim() !== '') {
             onTranscript(transcript);
           }

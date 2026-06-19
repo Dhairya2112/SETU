@@ -3,9 +3,10 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 interface AgentSocketOptions {
   token: string | null;
   conversationId: string;
+  onReminderFired?: (reminder: { id: string; title: string; body: string }) => void;
 }
 
-export function useAgentSocket({ token, conversationId }: AgentSocketOptions) {
+export function useAgentSocket({ token, conversationId, onReminderFired }: AgentSocketOptions) {
     const [isConnected, setIsConnected] = useState(false);
     const [messages, setMessages] = useState<{role: 'user' | 'agent', text: string}[]>([]);
     const [isThinking, setIsThinking] = useState(false);
@@ -13,6 +14,7 @@ export function useAgentSocket({ token, conversationId }: AgentSocketOptions) {
     
     const socketRef = useRef<WebSocket | null>(null);
     const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+    const isStreamingRef = useRef<boolean>(false); // true while receiving a new agent response
 
     const stopSpeaking = useCallback(() => {
       if (currentAudioRef.current) {
@@ -64,12 +66,15 @@ export function useAgentSocket({ token, conversationId }: AgentSocketOptions) {
           setIsThinking(false);
           setMessages(prev => {
             const lastMsg = prev[prev.length - 1];
-            if (lastMsg && lastMsg.role === 'agent') {
+            // Only append to existing agent message if we are actively streaming
+            if (isStreamingRef.current && lastMsg && lastMsg.role === 'agent') {
               return [
-                ...prev.slice(0, -1), 
+                ...prev.slice(0, -1),
                 { role: 'agent', text: lastMsg.text + data.message }
               ];
             } else {
+              // First chunk of a new response — start a fresh message
+              isStreamingRef.current = true;
               return [...prev, { role: 'agent', text: data.message }];
             }
           });
@@ -100,11 +105,21 @@ export function useAgentSocket({ token, conversationId }: AgentSocketOptions) {
                setIsSpeaking(false);
                currentAudioRef.current = null;
             });
+        } else if (data.chunk_type === 'reminder') {
+            if (onReminderFired) {
+                onReminderFired({
+                    id: data.reminder_id,
+                    title: data.title,
+                    body: data.body
+                });
+            }
         } else if (data.chunk_type === 'status') {
             if (data.message === 'thinking') {
                 setIsThinking(true);
+                isStreamingRef.current = false; // Reset — ready for a fresh response
             } else if (data.message === 'done') {
                 setIsThinking(false);
+                isStreamingRef.current = false;
             }
         }
       };

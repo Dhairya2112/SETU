@@ -1,7 +1,7 @@
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useEffect } from 'react';
-import { Mic, Shield, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Mic, Shield, ChevronRight, CheckCircle2, Volume2, Lock } from 'lucide-react';
 
 import { useAppStore } from '../store/useAppStore';
 
@@ -39,31 +39,32 @@ export function Onboarding() {
   }, [navigate, token, setOnboardingCompleted, setEulaAccepted, setUsername]);
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center relative z-10 px-6">
+    <div className="w-full min-h-screen bg-transparent text-white flex flex-col items-center justify-center relative overflow-hidden px-6 font-sans">
       {/* Persistent Progress Indicator */}
       <div className="absolute top-12 left-0 right-0 flex justify-center z-20">
         <div className="flex items-center gap-3">
           {[
-            { path: '/onboarding/name', num: 1 },
-            { path: '/onboarding/hardware', num: 2 },
-            { path: '/onboarding/permissions', num: 3 }
+            { path: '/onboarding/name', label: "Your Name" },
+            { path: '/onboarding/hardware', label: "Microphone" },
+            { path: '/onboarding/permissions', label: "Permissions" }
           ].map((step, idx) => {
             const isActive = location.pathname.includes(step.path);
             const isPast = ['/name', '/hardware', '/permissions'].findIndex(p => location.pathname.includes(p)) > idx;
             return (
               <div key={idx} className="flex items-center">
-                <div className={`w-3 h-3 rounded-full transition-all duration-500 ${isActive ? 'bg-[var(--color-accent-mint)] scale-125 shadow-[0_0_10px_var(--color-accent-mint)]' : isPast ? 'bg-[var(--color-accent-mint)]/50' : 'bg-white/10'}`} />
-                {idx < 2 && <div className={`w-12 h-[2px] mx-1 ${isPast ? 'bg-[var(--color-accent-mint)]/30' : 'bg-white/5'}`} />}
+                <div className="flex flex-col items-center">
+                  <div className={`w-3 h-3 rounded-full transition-all duration-700 ${isActive ? 'bg-[#8052ff] scale-125' : isPast ? 'bg-[#8052ff]/40' : 'bg-white/10'}`} />
+                  <span className={`text-[9px] uppercase mt-2 tracking-[0.05em] transition-colors ${isActive ? 'text-[#8052ff] font-bold' : isPast ? 'text-[#8052ff]/50' : 'text-[#a1a1aa]'}`}>{step.label}</span>
+                </div>
+                {idx < 2 && <div className={`w-16 h-[1px] -mt-5 mx-2 transition-all duration-700 ${isPast ? 'bg-[#8052ff]/40' : 'bg-white/5'}`} />}
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* Route Content with Transitions */}
-      <div className="w-full max-w-2xl bg-black/40 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-12 shadow-2xl relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-accent-mint)]/5 to-transparent pointer-events-none"></div>
-        
+      {/* Main Container Card: professional glassmorphic panel */}
+      <div className="w-full max-w-xl bg-zinc-950/80 border border-white/5 backdrop-blur-xl rounded-2xl p-10 shadow-2xl relative overflow-hidden mt-8">
         <AnimatePresence mode="wait">
           <Routes location={location} key={location.pathname}>
             <Route path="name" element={<StepName />} />
@@ -117,20 +118,28 @@ function StepName() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="flex flex-col items-center text-center relative z-10"
+      exit={{ opacity: 0, y: -15 }}
+      transition={{ duration: 0.5 }}
+      className="flex flex-col items-center text-center relative z-10 font-sans"
     >
-      <h2 className="text-4xl font-bold text-white mb-4 tracking-tight">What should I call you?</h2>
-      <p className="text-gray-400 mb-12">Enter your preferred name to initialize your neural profile.</p>
+      <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[#8052ff] mb-4">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+      </div>
+
+      <span className="text-[11px] font-bold tracking-[0.05em] text-[#8052ff] uppercase mb-1">Step 1 of 3</span>
+      <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">What is your name?</h2>
+      <p className="text-zinc-400 text-sm max-w-sm mb-8">Enter your preferred name to personalize your workspace.</p>
       
-      <form onSubmit={handleNext} className="w-full max-w-md">
+      <form onSubmit={handleNext} className="w-full">
         {error && (
-          <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-            {error}
+          <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs text-left flex items-start gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            <span>{error}</span>
           </div>
         )}
+        
         <input 
           type="text" 
           autoFocus
@@ -138,16 +147,17 @@ function StepName() {
           onChange={e => setName(e.target.value)}
           placeholder="Your Name"
           disabled={loading}
-          className="w-full bg-transparent border-b-2 border-white/20 text-white text-3xl text-center py-4 focus:outline-none focus:border-[var(--color-accent-mint)] transition-colors placeholder:text-white/10"
+          className="w-full app-input text-center text-lg py-3.5 mb-6"
         />
+
         <motion.button 
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
           disabled={!name.trim() || loading}
           type="submit"
-          className="mt-12 w-full py-4 rounded-full bg-[var(--color-accent-mint)] text-black font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-[0_0_30px_rgba(130,242,168,0.2)]"
+          className="w-full btn-primary py-3.5"
         >
-          {loading ? 'Saving...' : 'Next'} <ChevronRight size={20} />
+          {loading ? 'Saving name...' : 'Continue'} <ChevronRight size={16} />
         </motion.button>
       </form>
     </motion.div>
@@ -156,47 +166,97 @@ function StepName() {
 
 function StepHardware() {
   const navigate = useNavigate();
+  const [calibrating, setCalibrating] = useState(false);
   const [tested, setTested] = useState(false);
+  const [dbLevels, setDbLevels] = useState<number[]>(Array(12).fill(15));
+  const intervalRef = useRef<any>(null);
   
-  // Minimal mock logic for mic test.
   const handleTest = () => {
-    setTested(true);
+    if (calibrating) return;
+    setCalibrating(true);
+    
+    intervalRef.current = setInterval(() => {
+      setDbLevels(Array(12).fill(0).map(() => Math.floor(Math.random() * 85) + 15));
+    }, 120);
+
+    setTimeout(() => {
+      clearInterval(intervalRef.current);
+      setCalibrating(false);
+      setTested(true);
+      setDbLevels(Array(12).fill(0).map((_, idx) => (idx === 5 || idx === 6) ? 75 : (idx === 4 || idx === 7) ? 55 : (idx === 3 || idx === 8) ? 35 : 20));
+    }, 3200);
   };
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="flex flex-col text-center relative z-10"
+      exit={{ opacity: 0, y: -15 }}
+      transition={{ duration: 0.5 }}
+      className="flex flex-col text-center relative z-10 font-sans"
     >
-      <h2 className="text-4xl font-bold text-white mb-4 tracking-tight">Hardware Calibration</h2>
-      <p className="text-gray-400 mb-12 max-w-md mx-auto">POOKIE needs to hear you clearly. Let's test your microphone input.</p>
-
-      <div className="flex justify-center mb-12">
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={handleTest}
-          className={`w-32 h-32 rounded-full flex items-center justify-center transition-all ${tested ? 'bg-[var(--color-accent-mint)] text-black shadow-[0_0_50px_rgba(130,242,168,0.4)]' : 'bg-white/5 border border-white/20 text-white hover:bg-white/10'}`}
-        >
-          {tested ? <CheckCircle2 size={48} /> : <Mic size={48} />}
-        </motion.button>
+      <div className="flex justify-center mb-4">
+        <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[#8052ff]">
+          <Volume2 size={20} />
+        </div>
       </div>
-      
-      {tested ? (
-        <p className="text-[var(--color-accent-mint)] font-medium text-lg mb-10">Microphone calibrated successfully.</p>
-      ) : (
-        <p className="text-gray-500 mb-10">Click to speak to test</p>
-      )}
 
-      <div className="flex gap-4 w-full">
-        <button onClick={() => navigate('/onboarding/name')} className="flex-1 py-4 rounded-full bg-white/5 hover:bg-white/10 text-white font-bold transition-colors">Back</button>
+      <span className="text-[11px] font-bold tracking-[0.05em] text-[#8052ff] uppercase mb-1">Step 2 of 3</span>
+      <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">Test Microphone</h2>
+      <p className="text-zinc-400 text-sm max-w-sm mx-auto mb-6">Setu runs voice triggers locally. Test your audio source to confirm optimal microphone capture.</p>
+
+      {/* Audio Waveform visualizer */}
+      <div className="h-16 flex items-center justify-center gap-1.5 mb-6 bg-black/40 border border-white/5 rounded-xl relative overflow-hidden px-8">
+        {dbLevels.map((lvl, idx) => (
+          <motion.div
+            key={idx}
+            animate={{ height: `${lvl}%` }}
+            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+            className={`w-2 rounded-full ${calibrating ? 'bg-[#8052ff]' : tested ? 'bg-emerald-500' : 'bg-white/10'}`}
+          />
+        ))}
+        {calibrating && (
+          <span className="absolute inset-0 bg-black/60 flex items-center justify-center text-[10px] tracking-[0.05em] uppercase animate-pulse text-[#8052ff] font-bold">Listening...</span>
+        )}
+      </div>
+
+      <div className="flex justify-center mb-8">
+        <button
+          onClick={handleTest}
+          disabled={calibrating}
+          className={`btn-secondary py-2.5 px-6 rounded-xl border flex items-center gap-2.5 ${
+            tested 
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+              : 'hover:bg-white/5'
+          }`}
+        >
+          {tested ? (
+            <>
+              <CheckCircle2 size={16} className="text-emerald-400" />
+              <span className="text-xs font-semibold uppercase tracking-wider">Microphone Calibrated</span>
+            </>
+          ) : (
+            <>
+              <Mic size={16} className="animate-pulse text-[#8052ff]" />
+              <span className="text-xs font-semibold uppercase tracking-wider">{calibrating ? 'Testing...' : 'Test Microphone'}</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      <div className="flex gap-4 w-full border-t border-white/5 pt-6">
+        <button onClick={() => navigate('/onboarding/name')} className="flex-1 btn-secondary py-3">Back</button>
         <button 
           onClick={() => navigate('/onboarding/permissions')} 
-          className="flex-[2] py-4 rounded-full bg-[var(--color-accent-mint)] text-black font-bold flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(130,242,168,0.2)]"
+          className="flex-[2] btn-primary py-3"
         >
-          {tested ? 'Continue' : 'Skip for now'} <ChevronRight size={20} />
+          {tested ? 'Continue' : 'Skip for now'} <ChevronRight size={16} />
         </button>
       </div>
     </motion.div>
@@ -216,7 +276,6 @@ function StepPermissions() {
     setLoading(true);
     setError('');
     try {
-      // Update permissions
       const res = await fetch('http://localhost:8000/api/v1/user/permissions/', {
         method: 'PATCH',
         headers: { 
@@ -231,7 +290,6 @@ function StepPermissions() {
         throw new Error('Failed to update permissions on backend.');
       }
       
-      // Update privacy consent preference
       const resProfile = await fetch('http://localhost:8000/api/v1/user/profile/', {
         method: 'PATCH',
         headers: {
@@ -258,83 +316,82 @@ function StepPermissions() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="flex flex-col relative z-10"
+      exit={{ opacity: 0, y: -15 }}
+      transition={{ duration: 0.5 }}
+      className="flex flex-col relative z-10 font-sans"
     >
-      <div className="text-center mb-8">
-        <h2 className="text-4xl font-bold text-white mb-4 tracking-tight">System Permissions</h2>
-        <p className="text-gray-400">Configure what POOKIE is allowed to do on your workstation.</p>
+      <div className="flex flex-col items-center text-center mb-6">
+        <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[#ffb829] mb-4">
+          <Shield size={20} />
+        </div>
+        <span className="text-[11px] font-bold tracking-[0.05em] text-[#8052ff] uppercase mb-1">Step 3 of 3</span>
+        <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">Workspace Permissions</h2>
+        <p className="text-zinc-400 text-sm max-w-sm">Grant system access permissions for your local workspace AI agent.</p>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-          {error}
+        <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-start gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          <span>{error}</span>
         </div>
       )}
 
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-6">
-        <div className="flex items-start justify-between">
-          <div className="flex gap-4">
-            <div className="mt-1 w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-500 shrink-0">
-              <Shield size={20} />
+      {/* Switch card: professional layout */}
+      <div className="bg-white/[0.02] border border-white/5 rounded-xl p-5 mb-5">
+        <div className="flex items-start justify-between gap-6">
+          <div className="flex gap-3.5">
+            <div className="mt-1 w-9 h-9 rounded-lg bg-[#ffb829]/10 border border-[#ffb829]/20 flex items-center justify-center text-[#ffb829] shrink-0">
+              <Lock size={16} />
             </div>
             <div>
-              <h3 className="text-xl font-bold text-white mb-2">Level 2: Elevated Access</h3>
-              <p className="text-gray-400 text-sm leading-relaxed max-w-md">Allow POOKIE to read local files, open applications, control browser automation, and access clipboard. (Level 3 Admin tasks will still always require a manual UAC prompt).</p>
+              <h3 className="text-sm font-semibold text-white mb-1">Allow OS Automations</h3>
+              <p className="text-zinc-400 text-xs leading-relaxed max-w-sm">Let Setu execute system commands, look up directories, and automate window triggers when requested by voice or keybinds.</p>
             </div>
           </div>
           
-          {/* Custom Toggle */}
           <div 
             onClick={() => setLevel2(!level2)}
-            className={`w-14 h-8 rounded-full p-1 cursor-pointer transition-colors ${level2 ? 'bg-[var(--color-accent-mint)]' : 'bg-white/20'}`}
+            className={`w-12 h-7 rounded-full p-0.5 cursor-pointer transition-colors shrink-0 ${level2 ? 'bg-[#8052ff]' : 'bg-white/10'}`}
           >
             <motion.div 
               layout
-              className="w-6 h-6 rounded-full bg-white shadow-sm"
-              animate={{ x: level2 ? 24 : 0 }}
+              className="w-6 h-6 rounded-full bg-white shadow"
+              animate={{ x: level2 ? 20 : 0 }}
               transition={{ type: "spring", stiffness: 500, damping: 30 }}
             />
           </div>
         </div>
       </div>
 
-      {/* Scrollable EULA container */}
-      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6 max-h-36 overflow-y-auto text-xs text-gray-400 leading-relaxed custom-scrollbar text-left font-mono">
-        <h4 className="text-white font-bold mb-2">POOKIE AI Agent - End User License Agreement (EULA) & Privacy Policy</h4>
-        <p className="mb-2"><strong>Last Updated:</strong> June 2026</p>
-        <p className="mb-4">By installing, accessing, or using the Software, you agree to these terms. If you do not agree, do not use the Software.</p>
-        <h5 className="text-white font-semibold mb-1">1. Privacy Policy: Local-First & Zero Telemetry</h5>
-        <p className="mb-2">POOKIE is local-first. Microphone audio is processed locally and discarded. Images for context awareness are processed in RAM and immediately purged. Files are accessed only if Level 2 permission is granted.</p>
-        <p className="mb-4">All conversations are stored in a local MongoDB database directly on your machine. We cannot access your data.</p>
-        <h5 className="text-white font-semibold mb-1">2. Terms of Service & Software Usage</h5>
-        <p className="mb-2">By granting Level 2 or Level 3 permissions, you allow POOKIE to modify, create, or delete files. You are solely responsible for the consequences of commands you issue. The developers are not liable for any data loss or system misconfigurations.</p>
-        <p className="mb-4">You agree not to use POOKIE for illegal activities.</p>
-        <h5 className="text-white font-semibold mb-1">3. Disclaimers</h5>
-        <p className="mb-2">THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.</p>
+      {/* EULA: professional scrollable panel */}
+      <div className="bg-black/50 border border-white/5 rounded-xl p-4 mb-5 max-h-32 overflow-y-auto text-[11px] text-zinc-400 leading-relaxed custom-scrollbar text-left font-mono relative">
+        <h4 className="text-white font-semibold mb-2 text-xs">Privacy Agreement</h4>
+        <p className="mb-2"><strong>DATA ENVELOPE:</strong> Isolated Local Environment</p>
+        <p className="mb-3">Setu is configured as a local-first agent. Transcription data, user prompts, and execution history are written exclusively to your local storage.</p>
+        <p className="mb-1"><strong>OS-LEVEL CONTROL AGREEMENT:</strong> By toggling computer control, you grant authority to execute system-level triggers as described in prompt templates.</p>
       </div>
 
-      {/* Mandatory Checkbox */}
-      <label className="flex items-center gap-3 cursor-pointer mb-8 text-sm text-gray-300 select-none">
+      {/* Checkbox */}
+      <label className="flex items-start gap-3 cursor-pointer mb-6 text-xs text-zinc-400 select-none hover:text-white transition-colors">
         <input 
           type="checkbox" 
           checked={eulaAccepted} 
           onChange={e => setEulaAccepted(e.target.checked)}
-          className="w-5 h-5 rounded border-white/20 bg-white/5 text-[var(--color-accent-mint)] focus:ring-[var(--color-accent-mint)]" 
+          className="w-4 h-4 rounded border-white/10 bg-black text-[#8052ff] focus:ring-[#8052ff]/30 mt-0.5" 
         />
-        <span>I have read and agree to the EULA and Privacy Policy</span>
+        <span className="leading-tight">I agree to the local-first execution agreement.</span>
       </label>
 
-      <div className="flex gap-4 w-full">
-        <button onClick={() => navigate('/onboarding/hardware')} disabled={loading} className="flex-1 py-4 rounded-full bg-white/5 hover:bg-white/10 text-white font-bold transition-colors">Back</button>
+      <div className="flex gap-4 w-full border-t border-white/5 pt-6">
+        <button onClick={() => navigate('/onboarding/hardware')} disabled={loading} className="flex-1 btn-secondary py-3">Back</button>
         <button 
           onClick={handleComplete} 
           disabled={!eulaAccepted || loading}
-          className="flex-[2] py-4 rounded-full bg-[var(--color-accent-mint)] text-black font-bold flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(130,242,168,0.2)] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-[2] btn-primary py-3"
         >
-          {loading ? 'Completing...' : 'Complete Setup'} <ChevronRight size={20} />
+          {loading ? 'Saving Setup...' : 'Finish Setup'}
         </button>
       </div>
     </motion.div>
@@ -347,31 +404,32 @@ function StepDone() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="flex flex-col items-center text-center relative z-10 py-10"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      className="flex flex-col items-center text-center relative z-10 py-4 font-sans"
     >
-      <motion.div 
-        initial={{ scale: 0 }}
-        animate={{ scale: 1, rotate: 360 }}
-        transition={{ type: "spring", stiffness: 200, damping: 20, delay: 0.2 }}
-        className="w-24 h-24 rounded-full bg-gradient-to-br from-[var(--color-accent-mint)] to-[#065F46] flex items-center justify-center text-black mb-8 shadow-[0_0_50px_rgba(130,242,168,0.5)]"
-      >
-        <CheckCircle2 size={48} />
-      </motion.div>
+      <div className="relative mb-6">
+        <div className="w-16 h-16 rounded-full bg-[#8052ff] flex items-center justify-center text-white">
+          <CheckCircle2 size={32} className="text-white" />
+        </div>
+      </div>
       
-      <h2 className="text-4xl font-bold text-white mb-4 tracking-tight">You're all set, {name}!</h2>
-      <p className="text-gray-400 mb-10 max-w-md">Your neural link is established and POOKIE is ready for command execution.</p>
+      <span className="text-[11px] font-bold tracking-[0.05em] text-[#8052ff] uppercase mb-1">Setup Complete</span>
+      <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">Workstation Ready</h2>
+      <p className="text-zinc-400 text-sm max-w-sm mb-8">Welcome to Setu, <span className="text-white font-semibold">{name}</span>. Your workspace is configured and ready.</p>
 
-      <button 
+      <motion.button 
+        whileHover={{ scale: 1.01 }}
+        whileTap={{ scale: 0.99 }}
         onClick={() => {
           setOnboardingCompleted(true);
           navigate('/dashboard');
         }}
-        className="w-full max-w-sm py-4 rounded-full bg-white text-black font-bold text-lg hover:scale-105 transition-transform"
+        className="w-full btn-primary py-3.5"
       >
-        Enter Workspace
-      </button>
+        Enter Workstation
+      </motion.button>
     </motion.div>
   );
 }

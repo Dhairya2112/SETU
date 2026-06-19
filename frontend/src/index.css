@@ -1,22 +1,32 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg-base: #030108;
-  --color-bg-surface: #0a0616;
+  /* Colors - Professional App Palette */
+  --color-bg-base: #030303;        /* Deepest Obsidian */
+  --color-bg-surface: #09090b;     /* Slate Dark Gray (zinc-950) */
+  --color-bg-surface-hover: #18181b;
   
-  --color-accent-mint: #82F2A8;
-  --color-accent-lime: #C4F282;
-  --color-accent-purple: #C084FC;
-  --color-accent-cyan: #22D3EE;
+  --color-accent-mint: #8052ff;    /* Plum Voltage - primary brand color */
+  --color-accent-lime: #ffb829;    /* Amber Spark */
+  --color-accent-purple: #c084fc;  /* Iridescent Violet */
+  --color-accent-cyan: #15846e;    /* Lichen Green */
   
-  --color-text-primary: #FFFFFF;
-  --color-text-secondary: #A0AEC0;
+  --color-text-primary: #f4f4f5;   /* Crisp off-white */
+  --color-text-secondary: #a1a1aa; /* Zinc-400 */
+  --color-text-muted: #52525b;     /* Zinc-600 */
   
-  --color-border: rgba(255, 255, 255, 0.05);
-  
-  --font-display: "Syne", sans-serif;
-  --font-body: "Syne", sans-serif;
-  --font-sans: "Syne", sans-serif;
+  --color-border: rgba(255, 255, 255, 0.06);
+
+  /* Typography */
+  --font-acronym: 'Space Grotesk', ui-sans-serif, system-ui;
+  --font-display: var(--font-acronym);
+  --font-body: var(--font-acronym);
+  --font-sans: var(--font-acronym);
+
+
+
+  /* Border Radius */
+  --radius-3xl: 24px;
 }
 
 :root {
@@ -38,36 +48,124 @@ body {
 }
 
 *, html, body, button, input, select, textarea {
-  font-family: "Syne", sans-serif !important;
+  font-family: 'Space Grotesk', sans-serif !important;
 }
 
 /* Custom Scrollbars */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+  height: 6px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 9999px;
+  background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(130, 242, 168, 0.25);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 9999px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(130, 242, 168, 0.45);
+  background: rgba(255, 255, 255, 0.15);
 }
 
-/* Glass panel */
+/* Professional Card Panel Style (Subtle glass backdrop, crisp borders, dark background) */
 .glass-panel {
-  background: rgba(10, 6, 22, 0.45);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 1px 1px rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.01);
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
-/* Background wave pattern */
-.bg-wave {
-  background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 50 C 20 20, 80 80, 100 50' stroke='rgba(130, 242, 168, 0.02)' fill='transparent' stroke-width='1'/%3E%3C/svg%3E");
-  background-size: cover;
+/* Form input styling */
+.app-input {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  padding-right: 1rem;
+  padding-left: 1rem;
+  font-size: 0.875rem;
+  color: #ffffff;
+  transition: all 0.2s ease;
+}
+.app-input:focus {
+  outline: none;
+  border-color: var(--color-accent-mint);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Precise positioning for icons inside inputs to prevent overriding/overlap */
+.app-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.app-input-icon-left {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #71717a; /* zinc-500 */
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.app-input-with-icon {
+  padding-left: 2.75rem !important;
+}
+
+/* Primary Action Button (Tactile and sleek) */
+.btn-primary {
+  background: var(--color-accent-mint);
+  color: #ffffff;
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: none;
+  cursor: pointer;
+}
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Secondary Ghost Button */
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-weight: 500;
+  font-size: 0.875rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.btn-secondary:active:not(:disabled) {
+  transform: translateY(0);
 }

@@ -9,10 +9,10 @@ class WakeWordDetector:
         self.chunk_size = chunk_size
         self.sample_rate = sample_rate
         # For Phase 1 testing, we use a pre-trained openwakeword model.
-        # We will train a custom 'Hey POOKIE' model later.
+        # We use 'hey_jarvis' as a temporary proxy until the custom 'Hey Setu' model is trained.
         print("Loading OpenWakeWord model...")
         self.oww_model = Model(wakeword_models=['hey_jarvis'], inference_framework='onnx')
-        print("OpenWakeWord model loaded. Listening for 'Hey Jarvis' (temporary for POOKIE)...")
+        print("OpenWakeWord model loaded. Listening for 'Hey Setu' (using Jarvis model as a proxy)...")
         
         print("Loading Silero VAD (PyTorch)...")
         self.vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad')

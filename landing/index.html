@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setu AI — Private Voice-Native Cross-Device Automation</title>
+  <meta name="description" content="A private, voice-native AI assistant that makes your phone and laptop work as one device. Speak on your phone, execute on your laptop. Local network only.">
+  
+  <!-- Typography & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Outfit:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-obsidian text-zinc-100 font-sans antialiased overflow-x-hidden">
+
+  <!-- Glow effects -->
+  <div class="glow-bg-top"></div>
+  <div class="glow-bg-bottom"></div>
+
+  <!-- Header Navigation -->
+  <header class="navbar">
+    <div class="container navbar-container">
+      <div class="logo-area">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8052ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="animate-pulse">
+          <path d="M16 8.5H10.5a2.5 2.5 0 0 0 0 5h3a2.5 2.5 0 0 1 0 5H8" />
+          <circle cx="12.5" cy="13.5" r="1.5" fill="#8052ff" stroke="none" />
+        </svg>
+        <span class="logo-text">SETU</span>
+        <span class="badge">v1.0</span>
+      </div>
+      
+      <nav class="nav-links">
+        <a href="#features">FEATURES</a>
+        <a href="#architecture">ARCHITECTURE</a>
+        <a href="#privacy">PRIVACY FIRST</a>
+      </nav>
+
+      <div>
+        <a href="#download" class="btn-primary-small">DOWNLOAD APP</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="container hero-grid">
+      <div class="hero-content">
+        <div class="badge-pill">
+          <span class="badge-dot"></span>
+          <span>SANSKRIT FOR BRIDGE (सेतु)</span>
+        </div>
+        <h1 class="hero-title">
+          Speak on your <span class="gradient-text">phone</span>.<br>
+          Execute on your <span class="gradient-text">laptop</span>.
+        </h1>
+        <p class="hero-description">
+          A private, voice-native AI cockpit that makes your devices work as one. Automate file tasks, run shell scripts, and control apps over your local network. <strong>No cloud relay, zero cost, completely local.</strong>
+        </p>
+
+        <div class="hero-ctas">
+          <a href="#download" class="btn-primary">
+            Get Started For Free
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="arrow-icon"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </a>
+          <a href="#architecture" class="btn-secondary">
+            How it Works
+          </a>
+        </div>
+
+        <div class="hero-metadata">
+          <span class="meta-item"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> LAN ONLY</span>
+          <span class="meta-separator">•</span>
+          <span>ECDH P2P PAIRING</span>
+          <span class="meta-separator">•</span>
+          <span>AES-256-GCM</span>
+        </div>
+      </div>
+
+      <!-- Hero Graphic -->
+      <div class="hero-graphic-container">
+        <div class="graphic-glow"></div>
+        <div class="glass-panel graphic-card">
+          <img src="assets/hero.png" alt="Setu Device Bridge Preview" class="hero-image">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Core Value Grid -->
+  <section id="features" class="features-section">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-subtitle">SYSTEM CAPABILITIES</span>
+        <h2 class="section-title">Unifying Your Workspace</h2>
+        <p class="section-description">Automate everything on your workstation without sacrificing speed, security, or privacy.</p>
+      </div>
+
+      <div class="features-grid">
+        <!-- Feature 1 -->
+        <div class="glass-panel feature-card">
+          <div class="feature-icon-wrapper purple-bg">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+          </div>
+          <h3 class="feature-title">Voice-Native Execution</h3>
+          <p class="feature-desc">
+            Activate with the local wake word "Hey Setu". Runs open-source <strong>Faster-Whisper STT</strong> and <strong>Kokoro TTS</strong> locally on your machine—no remote audio recording.
+          </p>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="glass-panel feature-card">
+          <div class="feature-icon-wrapper amber-bg">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+          </div>
+          <h3 class="feature-title">Cross-Device Protocol</h3>
+          <p class="feature-desc">
+            Phone and laptop act as one system. Speak commands on your phone and watch your laptop navigate Chrome via <strong>Playwright</strong> or open local files using encrypted LAN WebSockets.
+          </p>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="glass-panel feature-card">
+          <div class="feature-icon-wrapper emerald-bg">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          </div>
+          <h3 class="feature-title">LAN-Only Privacy Guarantee</h3>
+          <p class="feature-desc">
+            No external server holds your history, memories, or screenshots. Discovery uses local mDNS, pairing is secured by <strong>ECDH</strong>, and all commands are client-side sandboxed.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture Flow -->
+  <section id="architecture" class="architecture-section">
+    <div class="container architecture-grid">
+      <div class="architecture-content">
+        <span class="section-subtitle">REAL-TIME FLOW</span>
+        <h2 class="section-title">The Bridge in Action</h2>
+        <p class="section-description-left">
+          When you issue a command, Setu pre-classifies simple commands locally via PyTorch, saving cloud LLM costs. Multi-step actions generate a detailed task plan for your consent, giving you absolute oversight before execution.
+        </p>
+
+        <ul class="steps-list">
+          <li class="step-item">
+            <span class="step-num">1</span>
+            <span class="step-text">Local Wake Word Detection</span>
+          </li>
+          <li class="step-item">
+            <span class="step-num">2</span>
+            <span class="step-text">PyTorch Classifier isolates simple intents</span>
+          </li>
+          <li class="step-item">
+            <span class="step-num">3</span>
+            <span class="step-text">LangGraph evaluates complex automation scripts</span>
+          </li>
+          <li class="step-item">
+            <span class="step-num">4</span>
+            <span class="step-text">Task plan confirmation & encrypted WSS delivery</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="architecture-visual">
+        <div class="glass-panel protocol-card">
+          <div class="protocol-header">
+            <span class="protocol-subtitle">WSS Network Protocol</span>
+            <div class="protocol-status">
+              <span class="status-dot"></span>
+              <span class="status-text">DAEMON ACTIVE</span>
+            </div>
+          </div>
+          
+          <div class="protocol-list">
+            <div class="protocol-item">
+              <span class="protocol-label">DISCOVERY</span>
+              <span class="protocol-value text-purple">mDNS: _setu-sync._tcp.local.</span>
+            </div>
+            <div class="protocol-item">
+              <span class="protocol-label">KEY EXCHANGE</span>
+              <span class="protocol-value">Elliptic-Curve Diffie-Hellman (ECDH)</span>
+            </div>
+            <div class="protocol-item">
+              <span class="protocol-label">ENCRYPTION</span>
+              <span class="protocol-value text-emerald">AES-256-GCM + HMAC-SHA256</span>
+            </div>
+            <div class="protocol-item">
+              <span class="protocol-label">AUTHENTICATION</span>
+              <span class="protocol-value">OAuth (Google + GitHub) Only</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download & Setup Widget -->
+  <section id="download" class="download-section">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-subtitle">READY TO BRIDGE?</span>
+        <h2 class="section-title">Deploy Setu Client</h2>
+        <p class="section-description">Download the companion workstation daemon for Windows and the mobile executor for Android.</p>
+      </div>
+
+      <div class="download-grid">
+        <!-- Windows Card -->
+        <div class="glass-panel download-card">
+          <div class="card-glow"></div>
+          <div class="card-content">
+            <div class="card-icon-wrapper">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+            </div>
+            <h3 class="card-title">Setu Workstation</h3>
+            <p class="card-desc">
+              Installs the background workstation daemon on Windows. Serves as the play-server, hosting the secure WebSocket server and automation engines.
+            </p>
+            <div class="card-meta">
+              <span>Windows 10/11 x64</span>
+              <span>Size: ~78MB</span>
+            </div>
+          </div>
+          <a href="#" class="btn-primary w-full text-center" onclick="alert('Download started: Setu_Workstation_Setup.exe')">
+            Download Installer (.exe)
+          </a>
+        </div>
+
+        <!-- Android Card -->
+        <div class="glass-panel download-card">
+          <div class="card-glow"></div>
+          <div class="card-content">
+            <div class="card-icon-wrapper">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+            </div>
+            <h3 class="card-title">Setu Mobile Companion</h3>
+            <p class="card-desc">
+              The remote voice and gesture control device. Holds pairing configuration details, streams real-time logs and desktop screenshot outputs over local subnets.
+            </p>
+            <div class="card-meta">
+              <span>Android 8.0+</span>
+              <span>Size: ~18MB</span>
+            </div>
+          </div>
+          <a href="#" class="btn-secondary w-full text-center" onclick="alert('Download started: Setu_Mobile.apk')">
+            Download Android Package (.apk)
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Privacy First Section -->
+  <section id="privacy" class="privacy-section">
+    <div class="container privacy-container">
+      <div class="privacy-icon-wrapper">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+      </div>
+      <h2 class="privacy-title">Your Workspace, Your Hardware</h2>
+      <p class="privacy-desc">
+        Setu is designed from the ground up to guarantee local-first processing. No voice clips, screenshot frames, or execution telemetry are saved on external servers. All authentication tokens are verified locally.
+      </p>
+      <div class="privacy-footer">
+        Secure • Auditable • Local-First • Zero Cloud Retainment
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-container">
+      <div class="footer-logo">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8052ff" stroke-width="2.5">
+          <path d="M16 8.5H10.5a2.5 2.5 0 0 0 0 5h3a2.5 2.5 0 0 1 0 5H8" />
+          <circle cx="12.5" cy="13.5" r="1.5" fill="#8052ff" stroke="none" />
+        </svg>
+        <span class="footer-logo-text">SETU AI</span>
+      </div>
+      <p class="footer-copyright">© 2026 Setu. Distributed under local developer MIT license. Open Source.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
