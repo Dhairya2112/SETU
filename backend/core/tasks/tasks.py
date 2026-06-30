@@ -27,22 +27,30 @@ def check_and_fire_reminders() -> int:
     A reminder is "due" when:
       - trigger_at <= now (UTC)
       - is_completed is False
-
-    Marks each reminder as completed BEFORE pushing to prevent double-firing
-    if the WebSocket push takes time or the task is retried.
+      - has not been fired, or was fired >= 2 minutes ago (retry delivery if offline)
 
     Returns:
         Number of reminders fired in this run.
     """
+    from datetime import timedelta
+    import mongoengine as me
+
     now = datetime.now(timezone.utc)
     channel_layer = get_channel_layer()
 
-    due_reminders = Reminder.objects(trigger_at__lte=now, is_completed=False)
+    # Retry delivery every 2 minutes until acknowledged (deleted)
+    retry_cutoff = now - timedelta(minutes=2)
+    due_reminders = Reminder.objects(
+        trigger_at__lte=now,
+        is_completed=False
+    ).filter(
+        me.Q(last_fired_at=None) | me.Q(last_fired_at__lte=retry_cutoff)
+    )
 
     fired_count = 0
     for reminder in due_reminders:
-        # Mark completed first — safe failure mode if push fails
-        reminder.is_completed = True
+        # Mark last_fired_at to prevent rapid double-firing
+        reminder.last_fired_at = now
         reminder.save()
 
         try:
@@ -58,9 +66,8 @@ def check_and_fire_reminders() -> int:
             fired_count += 1
             logger.info("Fired reminder '%s' for user %s", reminder.title, reminder.user_id)
         except Exception as e:
-            # User is offline — reminder is already marked completed, no retry needed
             logger.warning(
-                "Could not push reminder %s to user %s (likely offline): %s",
+                "Could not push reminder %s to user %s: %s",
                 reminder.reminder_id, reminder.user_id, e
             )
 

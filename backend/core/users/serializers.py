@@ -13,15 +13,20 @@ class RefreshSerializer(serializers.Serializer):
     refresh_token = serializers.CharField(required=True)
 
 class UserPreferencesSerializer(serializers.Serializer):
-    preferred_name = serializers.CharField(required=False, allow_null=True)
+    preferred_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    ai_provider = serializers.ChoiceField(choices=["nvidia", "openrouter", "gemini"], required=False)
     privacy_consent_granted = serializers.BooleanField(required=False)
     llm_mode = serializers.ChoiceField(choices=["local", "cloud"], required=False)
-    llm_model = serializers.CharField(required=False)
-    tts_voice = serializers.CharField(required=False)
+    llm_model = serializers.CharField(required=False, allow_blank=True)
+    tts_voice = serializers.CharField(required=False, allow_blank=True)
     tts_speed = serializers.FloatField(required=False)
     wake_word_sensitivity = serializers.FloatField(required=False)
     theme = serializers.ChoiceField(choices=["dark", "light"], required=False)
-    language = serializers.CharField(required=False)
+    language = serializers.CharField(required=False, allow_blank=True)
+    tts_voice_gender = serializers.ChoiceField(choices=["female", "male"], required=False)
+    screenshot_preference = serializers.ChoiceField(choices=["always", "ask", "never"], required=False)
+    trust_mode = serializers.BooleanField(required=False)
+    whitelisted_paths = serializers.ListField(child=serializers.CharField(), required=False)
 
 class UserPermissionsSerializer(serializers.Serializer):
     level_2_granted = serializers.BooleanField(required=False)

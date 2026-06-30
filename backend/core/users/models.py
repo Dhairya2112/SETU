@@ -4,15 +4,21 @@ from datetime import datetime, timezone
 
 class UserPreferences(me.EmbeddedDocument):
     preferred_name = me.StringField(null=True, default=None)
-    ai_provider = me.StringField(choices=["groq", "openrouter"], default="groq")
+    ai_provider = me.StringField(choices=["nvidia", "openrouter", "gemini"], default="nvidia")
     privacy_consent_granted = me.BooleanField(default=False)
     llm_mode = me.StringField(choices=["local", "cloud"], default="cloud")
-    llm_model = me.StringField(default="google/gemma-2-9b-it:free")
+    llm_model = me.StringField(default="meta/llama-3.3-70b-instruct")
     tts_voice = me.StringField(default="default")
     tts_speed = me.FloatField(default=1.0)
-    wake_word_sensitivity = me.FloatField(default=0.5)
+    wake_word_sensitivity = me.FloatField(default=0.06)
     theme = me.StringField(choices=["dark", "light"], default="dark")
     language = me.StringField(default="en")
+    
+    # Specified fields for settings/onboarding
+    tts_voice_gender = me.StringField(choices=["female", "male"], default="female")
+    screenshot_preference = me.StringField(choices=["always", "ask", "never"], default="ask")
+    trust_mode = me.BooleanField(default=False)
+    whitelisted_paths = me.ListField(me.StringField(), default=list)
 
 class UserPermissions(me.EmbeddedDocument):
     level_2_granted = me.BooleanField(default=False)
@@ -24,7 +30,7 @@ class User(me.Document):
     email = me.EmailField(unique=True, required=True)
     username = me.StringField(required=True)
     password_hash = me.StringField(null=True)
-    auth_provider = me.StringField(choices=["local", "google", "github", "microsoft"], default="local")
+    auth_provider = me.StringField(choices=["local", "google", "github"], default="local")
     oauth_provider_id = me.StringField(null=True)
     
     created_at = me.DateTimeField(default=lambda: datetime.now(timezone.utc))

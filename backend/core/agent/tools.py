@@ -40,11 +40,19 @@ def set_tool_context(user_id: str, conversation_id: str) -> None:
 
 
 def _get_user_id() -> str:
-    return user_id_var.get()
+    uid = user_id_var.get()
+    if uid == "anonymous":
+        import logging
+        logging.getLogger('core.agent').warning("Tool executed without user_id context! Defaulting to anonymous.")
+    return uid
 
 
 def _get_conversation_id() -> str:
-    return conversation_id_var.get()
+    cid = conversation_id_var.get()
+    if cid == "unknown":
+        import logging
+        logging.getLogger('core.agent').warning("Tool executed without conversation_id context! Defaulting to unknown.")
+    return cid
 
 
 def _log(tool_name: str, tool_input: str, tool_output: str, status: str) -> None:
@@ -112,6 +120,12 @@ def open_application(app_name: str) -> str:
         _log("open_application", app_name, PERMISSION_DENIED_MSG, "denied")
         return PERMISSION_DENIED_MSG
 
+    # Prevent shell injection: reject any input containing shell command separators or redirects
+    if any(char in app_name for char in ['&', '|', ';', '>', '<', '`', '$', '\n', '\r']):
+        msg = "🚫 Invalid application name format. Safety block."
+        _log("open_application", app_name, msg, "blocked")
+        return msg
+
     # Map common names to actual executables
     app_aliases: dict[str, list[str]] = {
         # Browsers
@@ -167,25 +181,8 @@ def open_application(app_name: str) -> str:
             url = "https://" + url
             
         try:
-            if platform.system() == "Windows":
-                subprocess.Popen(
-                    f"start {url}",
-                    shell=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            elif platform.system() == "Darwin":
-                subprocess.Popen(
-                    ["open", url],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            else:  # Linux
-                subprocess.Popen(
-                    ["xdg-open", url],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
+            import webbrowser
+            webbrowser.open(url)
             result = f"Opened website {url} in your default browser."
             _log("open_application", app_name, result, "success")
             return result
@@ -310,34 +307,94 @@ def control_volume(action: str) -> str:
             _log("control_volume", action, msg, "error")
             return msg
 
-    # Windows: Use PowerShell audio commands
+    # Windows: Use native ctypes COM interface for WASAPI (pycaw-like, zero-dependency)
     try:
+        import ctypes
+        from ctypes import HRESULT, POINTER, c_float, c_int, c_bool, c_void_p, byref
+        from ctypes.wintypes import DWORD
+
+        class GUID(ctypes.Structure):
+            _fields_ = [
+                ("Data1", DWORD),
+                ("Data2", ctypes.c_ushort),
+                ("Data3", ctypes.c_ushort),
+                ("Data4", ctypes.c_ubyte * 8)
+            ]
+            def __init__(self, l, w1, w2, b):
+                self.Data1 = l
+                self.Data2 = w1
+                self.Data3 = w2
+                for i in range(8):
+                    self.Data4[i] = b[i]
+
+        CLSID_MMDeviceEnumerator = GUID(0xBCDE0395, 0xE52F, 0x467C, [0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E])
+        IID_IMMDeviceEnumerator = GUID(0xA95664D2, 0x9614, 0x4F35, [0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6])
+        IID_IAudioEndpointVolume = GUID(0x5CDF2C82, 0x841E, 0x4546, [0x97, 0x22, 0x0C, 0xF7, 0x40, 0x78, 0x22, 0x9A])
+
+        def call_vtable(obj, index, arg_types, args):
+            vtable = ctypes.cast(obj, POINTER(c_void_p))[0]
+            func_ptr = ctypes.cast(vtable, POINTER(c_void_p))[index]
+            prototype = ctypes.WINFUNCTYPE(HRESULT, *([c_void_p] + arg_types))
+            func = prototype(func_ptr)
+            return func(obj, *args)
+
+        # Initialize COM
+        ctypes.windll.ole32.CoInitialize(None)
+
+        enumerator = c_void_p()
+        hr = ctypes.windll.ole32.CoCreateInstance(
+            byref(CLSID_MMDeviceEnumerator),
+            None,
+            1,
+            byref(IID_IMMDeviceEnumerator),
+            byref(enumerator)
+        )
+        if hr < 0:
+            raise Exception("Failed to create MMDeviceEnumerator.")
+
+        device = c_void_p()
+        hr = call_vtable(enumerator, 4, [c_int, c_int, POINTER(c_void_p)], [0, 0, byref(device)])
+        if hr < 0:
+            call_vtable(enumerator, 2, [], [])
+            raise Exception("Failed to get default audio endpoint.")
+
+        volume = c_void_p()
+        hr = call_vtable(device, 3, [POINTER(GUID), DWORD, c_void_p, POINTER(c_void_p)], [byref(IID_IAudioEndpointVolume), 1, None, byref(volume)])
+        if hr < 0:
+            call_vtable(device, 2, [], [])
+            call_vtable(enumerator, 2, [], [])
+            raise Exception("Failed to activate IAudioEndpointVolume.")
+
+        # Cleanup intermediate COM objects
+        call_vtable(device, 2, [], [])
+        call_vtable(enumerator, 2, [], [])
+
         if action == "mute":
-            # Use nircmd or PowerShell to mute
-            ps = '(New-Object -ComObject WScript.Shell).SendKeys([char]173)'
-            subprocess.run(["powershell", "-Command", ps], capture_output=True)
-            result = "Toggled mute."
+            call_vtable(volume, 14, [c_bool, c_void_p], [True, None])
+            result = "Volume muted."
         elif action == "unmute":
-            ps = '(New-Object -ComObject WScript.Shell).SendKeys([char]173)'
-            subprocess.run(["powershell", "-Command", ps], capture_output=True)
-            result = "Toggled mute."
+            call_vtable(volume, 14, [c_bool, c_void_p], [False, None])
+            result = "Volume unmuted."
         elif action == "get":
-            result = "Volume level query requires pycaw. Use 'run_shell_command' for detailed audio info."
+            mute = c_bool()
+            call_vtable(volume, 15, [POINTER(c_bool)], [byref(mute)])
+            vol_val = c_float()
+            call_vtable(volume, 9, [POINTER(c_float)], [byref(vol_val)])
+            status_str = "Muted" if mute.value else "Unmuted"
+            result = f"Volume: {int(vol_val.value * 100)}% ({status_str})."
         elif action.isdigit():
             level = max(0, min(100, int(action)))
-            # Set volume via PowerShell and COM
-            ps = f"""
-            $wshShell = New-Object -ComObject WScript.Shell;
-            1..50 | ForEach-Object {{ $wshShell.SendKeys([char]174) }};
-            $steps = [math]::Round({level} / 2);
-            1..$steps | ForEach-Object {{ $wshShell.SendKeys([char]175) }}
-            """
-            subprocess.run(["powershell", "-Command", ps], capture_output=True, timeout=15)
-            result = f"Volume set to approximately {level}%."
+            level_float = level / 100.0
+            call_vtable(volume, 7, [c_float, c_void_p], [level_float, None])
+            result = f"Volume set to {level}%."
         else:
             result = f"Unknown volume action '{action}'. Use 'mute', 'unmute', 'get', or a number like '50'."
+
+        # Release volume COM interface
+        call_vtable(volume, 2, [], [])
         _log("control_volume", action, result, "success")
         return result
+
     except Exception as e:
         msg = f"Volume control error: {e}"
         _log("control_volume", action, msg, "error")
@@ -387,7 +444,7 @@ def read_file(file_path: str) -> str:
         _log("read_file", file_path, PERMISSION_DENIED_MSG, "denied")
         return PERMISSION_DENIED_MSG
 
-    if not is_path_allowed(file_path):
+    if not is_path_allowed(file_path, _get_user_id()):
         msg = f"🚫 Access denied. File path '{file_path}' is outside the allowed directory."
         _log("read_file", file_path, msg, "blocked")
         return msg
@@ -420,7 +477,7 @@ def write_file(file_path: str, content: str) -> str:
         _log("write_file", file_path, PERMISSION_DENIED_MSG, "denied")
         return PERMISSION_DENIED_MSG
 
-    if not is_path_allowed(file_path):
+    if not is_path_allowed(file_path, _get_user_id()):
         msg = f"🚫 Access denied. File path '{file_path}' is outside the allowed directory."
         _log("write_file", file_path, msg, "blocked")
         return msg
@@ -445,7 +502,7 @@ def search_files(directory: str, pattern: str = "*") -> str:
         _log("search_files", f"{directory} | {pattern}", PERMISSION_DENIED_MSG, "denied")
         return PERMISSION_DENIED_MSG
 
-    if not is_path_allowed(directory):
+    if not is_path_allowed(directory, _get_user_id()):
         msg = f"🚫 Access denied. Directory '{directory}' is outside the allowed directory."
         _log("search_files", directory, msg, "blocked")
         return msg
@@ -481,7 +538,7 @@ def list_directory(directory: str) -> str:
         _log("list_directory", directory, PERMISSION_DENIED_MSG, "denied")
         return PERMISSION_DENIED_MSG
 
-    if not is_path_allowed(directory):
+    if not is_path_allowed(directory, _get_user_id()):
         msg = f"🚫 Access denied. Directory '{directory}' is outside the allowed directory."
         _log("list_directory", directory, msg, "blocked")
         return msg

@@ -24,6 +24,7 @@ class Reminder(me.Document):
     is_completed    = me.BooleanField(default=False)
     created_at      = me.DateTimeField(default=lambda: datetime.now(timezone.utc))
     platform_target = me.StringField(default="all")
+    last_fired_at   = me.DateTimeField(null=True, default=None)
 
     meta = {
         'collection': 'reminders',

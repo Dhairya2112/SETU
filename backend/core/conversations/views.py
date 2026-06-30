@@ -11,8 +11,18 @@ class ConversationListView(APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request):
-        limit = int(request.GET.get('limit', 20))
-        skip = int(request.GET.get('skip', 0))
+        try:
+            limit = int(request.GET.get('limit', 20))
+            limit = max(1, min(100, limit))
+        except ValueError:
+            limit = 20
+
+        try:
+            skip = int(request.GET.get('skip', 0))
+            skip = max(0, skip)
+        except ValueError:
+            skip = 0
+
         platform = request.GET.get('platform', None)
         
         query = Conversation.objects(user_id=request.user.user_id)

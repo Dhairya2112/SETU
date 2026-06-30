@@ -7,7 +7,6 @@ Three layers of defence:
   3. Output Sanitization — Truncate large outputs to prevent context overflow.
 """
 
-import os
 import re
 import platform
 from pathlib import Path
@@ -23,8 +22,8 @@ _BLACKLIST_PATTERNS: list[str] = [
     r"mkfs\b",
     r"dd\s+if=",
     r":\(\)\{\s*:\|:\&\s*\};:",           # fork bomb
-    r"shutdown",
-    r"reboot",
+    r"\bshutdown\b",
+    r"\breboot\b",
     r"init\s+[0-6]",
     r"chmod\s+-R\s+777\s+/",
     r">\s*/dev/sd[a-z]",
@@ -37,7 +36,7 @@ _BLACKLIST_PATTERNS: list[str] = [
     r"rmdir\s+/[sS]\s+/[qQ]",
     r"reg\s+delete",
     r"reg\s+add.*\/f",
-    r"bcdedit",
+    r"\bbcdedit\s+/(?:set|delete)\b",
     r"diskpart",
     r"cipher\s+/w:",
     r"net\s+user\s+.*\s+/delete",
@@ -104,21 +103,14 @@ def _get_sandbox_root() -> Path:
     return Path.home()
 
 
-def is_path_allowed(target_path: str) -> bool:
+def is_path_allowed(target_path: str, user_id: str = None) -> bool:
     """
-    Return True if `target_path` is inside the user's home directory
-    and not inside a protected system directory.
+    Return True if `target_path` is inside the user's home directory OR any
+    user-configured whitelisted directory, and not inside a protected system directory.
     """
     try:
         resolved = Path(target_path).resolve()
     except (OSError, ValueError):
-        return False
-
-    # Must be under the user home directory
-    sandbox = _get_sandbox_root()
-    try:
-        resolved.relative_to(sandbox)
-    except ValueError:
         return False
 
     # Extra check: reject known system directories (handles symlinks/junctions)
@@ -130,7 +122,44 @@ def is_path_allowed(target_path: str) -> bool:
         if resolved_str.lower().startswith(sdir.lower()):
             return False
 
-    return True
+    # Helper to check if child is a subpath of parent (case-insensitive on Windows)
+    def _is_subpath(child: Path, parent: Path) -> bool:
+        try:
+            child.relative_to(parent)
+            return True
+        except ValueError:
+            if platform.system() == "Windows":
+                try:
+                    c_parts = [p.lower() for p in child.parts]
+                    p_parts = [p.lower() for p in parent.parts]
+                    if len(c_parts) >= len(p_parts) and c_parts[:len(p_parts)] == p_parts:
+                        return True
+                except Exception:
+                    pass
+            return False
+
+    # Check against home directory first
+    sandbox = _get_sandbox_root()
+    if _is_subpath(resolved, sandbox):
+        return True
+
+    # Check against user's whitelisted paths from MongoDB
+    if user_id and user_id != "local":
+        from core.users.models import User
+        try:
+            user = User.objects(user_id=user_id).first()
+            if user and user.preferences and user.preferences.whitelisted_paths:
+                for wpath in user.preferences.whitelisted_paths:
+                    try:
+                        wpath_resolved = Path(wpath).resolve()
+                        if _is_subpath(resolved, wpath_resolved):
+                            return True
+                    except (OSError, ValueError):
+                        pass
+        except Exception:
+            pass  # Fallback to home sandbox if DB query fails
+
+    return False
 
 
 # ── 3. Output Sanitization ──────────────────────────────────────────────

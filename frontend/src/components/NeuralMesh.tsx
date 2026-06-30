@@ -17,7 +17,7 @@ export const NeuralMesh = () => {
     const connectionDistance = 120;
     const mouseDistance = 180;
 
-    let mouse = { x: -1000, y: -1000 };
+    const mouse = { x: -1000, y: -1000 };
     let time = 0;
     let animationFrameId: number;
 

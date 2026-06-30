@@ -32,6 +32,9 @@ def check_permission(user_id: str, required_level: int) -> bool:
     if required_level <= 1:
         return True  # Level 1 tools are always allowed
 
+    if user_id == "local":
+        return True  # Local listener loop runs with full access by default
+
     user = User.objects(user_id=user_id).first()
     if user is None:
         return False  # Unknown user — deny by default

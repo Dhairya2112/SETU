@@ -92,6 +92,7 @@ class SetuAgent:
             model="meta/llama-3.3-70b-instruct",
             nvidia_api_key=os.getenv("NVIDIA_API_KEY", "dummy"),
             timeout=12,
+            streaming=True
         )
         self.primary_agent = create_react_agent(
             self.primary_llm, self.tools,
@@ -105,6 +106,7 @@ class SetuAgent:
             api_key=os.getenv("OPENROUTER_API_KEY", "dummy"),
             model="google/gemma-4-31b-it:free",
             timeout=15,
+            streaming=True
         )
         self.fallback_agent = create_react_agent(
             self.fallback_llm, self.tools,
@@ -118,6 +120,7 @@ class SetuAgent:
             api_key=os.getenv("GEMINI_API_KEY", "dummy"),
             model="gemini-2.5-flash",
             timeout=15,
+            streaming=True
         )
         self.tertiary_agent = create_react_agent(
             self.tertiary_llm, self.tools,
@@ -126,6 +129,25 @@ class SetuAgent:
         )
 
         logger.info("Setu Agent ready — %d tools registered.", len(self.tools))
+
+    def _get_stable_config(self, conversation_id: str) -> dict:
+        """Find the last checkpoint where the last message was from the AI (stable state)."""
+        config = {"configurable": {"thread_id": conversation_id}}
+        try:
+            for state in self.primary_agent.get_state_history(config):
+                messages = state.values.get("messages", [])
+                if messages and messages[-1].type == "ai":
+                    checkpoint_id = state.config["configurable"].get("checkpoint_id")
+                    if checkpoint_id:
+                        return {
+                            "configurable": {
+                                "thread_id": conversation_id,
+                                "checkpoint_id": checkpoint_id
+                            }
+                        }
+        except Exception as e:
+            logger.warning("Failed to query state history for stable config: %s", e)
+        return config
 
     @retry(
         stop=stop_after_attempt(2),          # Was 3 — saves up to 3s on failure
@@ -138,7 +160,9 @@ class SetuAgent:
     def _scrub_output(self, text: str) -> str:
         """Strip hallucinated XML / tool-call tags from LLM output."""
         text = re.sub(r'\(function=[^>]+>.*?</function>\)', '', text)
-        text = re.sub(r'<[^>]+>', '', text)
+        # Strip specific agent-internal/thinking tags
+        text = re.sub(r'<(?:thought|thinking|call|response|action|result|function)[^>]*?>.*?</(?:thought|thinking|call|response|action|result|function)>', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'</?(?:thought|thinking|call|response|action|result|function)[^>]*?>', '', text, flags=re.IGNORECASE)
         return text.strip()
 
     def run(self, user_input: str, user_id: str = "local", conversation_id: str = "default") -> str:
@@ -162,8 +186,9 @@ class SetuAgent:
 
         # Layer 2: OpenRouter
         try:
+            stable_config = self._get_stable_config(conversation_id)
             result = self.fallback_agent.invoke(
-                {"messages": [("user", user_input)]}, config=config
+                {"messages": [("user", user_input)]}, config=stable_config
             )
             return self._scrub_output(result["messages"][-1].content)
         except Exception as e:
@@ -171,10 +196,66 @@ class SetuAgent:
 
         # Layer 3: Google Gemini
         try:
+            stable_config = self._get_stable_config(conversation_id)
             result = self.tertiary_agent.invoke(
-                {"messages": [("user", user_input)]}, config=config
+                {"messages": [("user", user_input)]}, config=stable_config
             )
             return self._scrub_output(result["messages"][-1].content)
         except Exception as e:
             logger.error("All LLM layers failed. Tertiary error: %s", e)
             return "Oops! I'm thinking about too many things right now. Give me a second and ask again!"
+
+    def run_stream(self, user_input: str, user_id: str = "local", conversation_id: str = "default"):
+        """
+        Execute one user turn and yield text tokens in real time.
+        """
+        set_tool_context(user_id, conversation_id)
+        config = {"configurable": {"thread_id": conversation_id}}
+
+        # Layer 1: NVIDIA NIM (with Tenacity retry)
+        try:
+            # stream_mode="messages" streams message chunks
+            for message, metadata in self.primary_agent.stream(
+                {"messages": [("user", user_input)]},
+                config=config,
+                stream_mode="messages"
+            ):
+                if metadata.get("langgraph_node") == "agent" and message.content:
+                    if not getattr(message, "tool_calls", None) and not getattr(message, "tool_call_chunks", None):
+                        yield message.content
+            return
+        except Exception as e:
+            logger.warning("Primary LLM (NVIDIA) streaming failed: %s — trying fallback.", e)
+
+        # Layer 2: OpenRouter
+        try:
+            stable_config = self._get_stable_config(conversation_id)
+            for message, metadata in self.fallback_agent.stream(
+                {"messages": [("user", user_input)]},
+                config=stable_config,
+                stream_mode="messages"
+            ):
+                if metadata.get("langgraph_node") == "agent" and message.content:
+                    if not getattr(message, "tool_calls", None) and not getattr(message, "tool_call_chunks", None):
+                        yield message.content
+            return
+        except Exception as e:
+            logger.warning("Secondary LLM (OpenRouter) streaming failed: %s — trying tertiary.", e)
+
+        # Layer 3: Google Gemini
+        try:
+            stable_config = self._get_stable_config(conversation_id)
+            for message, metadata in self.tertiary_agent.stream(
+                {"messages": [("user", user_input)]},
+                config=stable_config,
+                stream_mode="messages"
+            ):
+                if metadata.get("langgraph_node") == "agent" and message.content:
+                    if not getattr(message, "tool_calls", None) and not getattr(message, "tool_call_chunks", None):
+                        yield message.content
+            return
+        except Exception as e:
+            logger.error("All LLM layers failed in streaming. Tertiary error: %s", e)
+            yield "Oops! I'm thinking about too many things right now. Give me a second and ask again!"
+
+

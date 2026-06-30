@@ -16,6 +16,11 @@ export function useAgentSocket({ token, conversationId, onReminderFired }: Agent
     const currentAudioRef = useRef<HTMLAudioElement | null>(null);
     const isStreamingRef = useRef<boolean>(false); // true while receiving a new agent response
 
+    const onReminderFiredRef = useRef(onReminderFired);
+    useEffect(() => {
+      onReminderFiredRef.current = onReminderFired;
+    }, [onReminderFired]);
+
     const stopSpeaking = useCallback(() => {
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
@@ -50,99 +55,139 @@ export function useAgentSocket({ token, conversationId, onReminderFired }: Agent
     useEffect(() => {
       if (!token || !conversationId) return;
 
-      const wsUrl = `ws://localhost:8000/ws/stream/${conversationId}/?token=${token}`;
-      const ws = new WebSocket(wsUrl);
+      let reconnectTimeoutId: NodeJS.Timeout;
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 5;
+      let isManualCleanup = false;
 
-      ws.onopen = () => {
-        console.log('WebSocket Connected');
-        setIsConnected(true);
+      const connect = () => {
+        if (isManualCleanup) return;
+        
+        const wsUrl = `ws://localhost:8000/ws/stream/${conversationId}/?token=${token}`;
+        console.log(`Attempting WebSocket connection... (Attempt ${reconnectAttempts + 1})`);
+        const ws = new WebSocket(wsUrl);
+        socketRef.current = ws;
+
+        ws.onopen = () => {
+          console.log('WebSocket Connected');
+          setIsConnected(true);
+          reconnectAttempts = 0; // Reset connection attempts on success
+        };
+
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          
+          if (data.chunk_type === 'text') {
+            setIsThinking(false);
+            setMessages(prev => {
+              const lastMsg = prev[prev.length - 1];
+              if (isStreamingRef.current && lastMsg && lastMsg.role === 'agent') {
+                return [
+                  ...prev.slice(0, -1),
+                  { role: 'agent', text: lastMsg.text + data.message }
+                ];
+              } else {
+                isStreamingRef.current = true;
+                return [...prev, { role: 'agent', text: data.message }];
+              }
+            });
+          } else if (data.chunk_type === 'audio') {
+              if (currentAudioRef.current) {
+                currentAudioRef.current.pause();
+                currentAudioRef.current = null;
+              }
+
+              const audioUrl = `data:audio/wav;base64,${data.message}`;
+              const audio = new Audio(audioUrl);
+              currentAudioRef.current = audio;
+              
+              audio.onplay = () => setIsSpeaking(true);
+              audio.onended = () => {
+                 setIsSpeaking(false);
+                 currentAudioRef.current = null;
+              };
+              audio.onerror = (e) => {
+                 console.error("Audio playback error:", e);
+                 setIsSpeaking(false);
+                 currentAudioRef.current = null;
+              };
+              
+              audio.play().catch(e => {
+                 console.error("Browser blocked audio playback:", e);
+                 setIsSpeaking(false);
+                 currentAudioRef.current = null;
+              });
+          } else if (data.chunk_type === 'reminder') {
+              // Acknowledge the reminder by deleting/completing it on the backend
+              fetch(`http://localhost:8000/api/v1/reminders/${data.reminder_id}/`, {
+                  method: 'DELETE',
+                  headers: {
+                      'Authorization': `Bearer ${token}`
+                  }
+              }).catch(err => console.error("Error acknowledging reminder:", err));
+
+              if (onReminderFiredRef.current) {
+                  onReminderFiredRef.current({
+                      id: data.reminder_id,
+                      title: data.title,
+                      body: data.body
+                  });
+              }
+          } else if (data.chunk_type === 'status') {
+              if (data.message === 'thinking') {
+                  setIsThinking(true);
+                  isStreamingRef.current = false;
+              } else if (data.message === 'done') {
+                  setIsThinking(false);
+                  isStreamingRef.current = false;
+              }
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('WebSocket Error:', error);
+        };
+
+        ws.onclose = (event) => {
+          console.log(`WebSocket Disconnected: Code ${event.code}, Reason: ${event.reason}`);
+          setIsConnected(false);
+
+          if (isManualCleanup) return;
+
+          // If unauthorized (4001), do not automatically reconnect with same token.
+          // Let the background token refresh handler in App.tsx refresh the token.
+          if (event.code === 4001) {
+            console.warn("WebSocket closed due to unauthorized token (4001). Reconnection skipped.");
+            return;
+          }
+
+          if (reconnectAttempts < maxReconnectAttempts) {
+            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 10000);
+            console.log(`Reconnecting WebSocket in ${delay}ms...`);
+            reconnectTimeoutId = setTimeout(() => {
+              reconnectAttempts++;
+              connect();
+            }, delay);
+          } else {
+            console.error("Max WebSocket reconnection attempts reached.");
+          }
+        };
       };
 
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        
-        // Handle the streaming chunks from the AI
-        if (data.chunk_type === 'text') {
-          setIsThinking(false);
-          setMessages(prev => {
-            const lastMsg = prev[prev.length - 1];
-            // Only append to existing agent message if we are actively streaming
-            if (isStreamingRef.current && lastMsg && lastMsg.role === 'agent') {
-              return [
-                ...prev.slice(0, -1),
-                { role: 'agent', text: lastMsg.text + data.message }
-              ];
-            } else {
-              // First chunk of a new response — start a fresh message
-              isStreamingRef.current = true;
-              return [...prev, { role: 'agent', text: data.message }];
-            }
-          });
-        } else if (data.chunk_type === 'audio') {
-            // Stop any playing audio before playing the next chunk
-            if (currentAudioRef.current) {
-              currentAudioRef.current.pause();
-              currentAudioRef.current = null;
-            }
+      connect();
 
-            const audioUrl = `data:audio/wav;base64,${data.message}`;
-            const audio = new Audio(audioUrl);
-            currentAudioRef.current = audio;
-            
-            audio.onplay = () => setIsSpeaking(true);
-            audio.onended = () => {
-               setIsSpeaking(false);
-               currentAudioRef.current = null;
-            };
-            audio.onerror = (e) => {
-               console.error("Audio playback error:", e);
-               setIsSpeaking(false);
-               currentAudioRef.current = null;
-            };
-            
-            audio.play().catch(e => {
-               console.error("Browser blocked audio playback:", e);
-               setIsSpeaking(false);
-               currentAudioRef.current = null;
-            });
-        } else if (data.chunk_type === 'reminder') {
-            if (onReminderFired) {
-                onReminderFired({
-                    id: data.reminder_id,
-                    title: data.title,
-                    body: data.body
-                });
-            }
-        } else if (data.chunk_type === 'status') {
-            if (data.message === 'thinking') {
-                setIsThinking(true);
-                isStreamingRef.current = false; // Reset — ready for a fresh response
-            } else if (data.message === 'done') {
-                setIsThinking(false);
-                isStreamingRef.current = false;
-            }
+      return () => {
+        isManualCleanup = true;
+        if (currentAudioRef.current) {
+          currentAudioRef.current.pause();
+          currentAudioRef.current = null;
+        }
+        clearTimeout(reconnectTimeoutId);
+        if (socketRef.current) {
+          socketRef.current.close();
         }
       };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket Error:', error);
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket Disconnected');
-      setIsConnected(false);
-    };
-
-    socketRef.current = ws;
-
-    return () => {
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause();
-        currentAudioRef.current = null;
-      }
-      ws.close();
-    };
-  }, [token, conversationId]);
+    }, [token, conversationId]);
 
   const sendCommand = useCallback((text: string) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {

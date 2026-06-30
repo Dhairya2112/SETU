@@ -101,7 +101,7 @@ Audit log of every tool execution. Auto-expires after 90 days.
   "_id": "ObjectId",
   "log_id": "uuid4-string",
   "user_id": "uuid4-string",
-  "timestamp": "ISODate",
+  "executed_at": "ISODate",
   "intent_class": "string",
   "tool_name": "string",
   "tool_parameters": "object",
@@ -114,7 +114,7 @@ Audit log of every tool execution. Auto-expires after 90 days.
 }
 ```
 
-Indexes: `{ "user_id": 1, "timestamp": -1 }` compound, `{ "timestamp": 1 }` TTL 90 days
+Indexes: `{ "user_id": 1, "executed_at": -1 }` compound, `{ "executed_at": 1 }` TTL 90 days
 
 ---
 
@@ -236,8 +236,8 @@ Indexes: `{ "user_id": 1, "trigger_at": 1 }` compound, `{ "trigger_at": 1, "is_c
 | `users` | `{ "user_id": 1 }` | Unique |
 | `conversations` | `{ "conversation_id": 1 }` | Unique |
 | `conversations` | `{ "user_id": 1, "started_at": -1 }` | Compound |
-| `command_logs` | `{ "user_id": 1, "timestamp": -1 }` | Compound |
-| `command_logs` | `{ "timestamp": 1 }` | TTL 90 days |
+| `command_logs` | `{ "user_id": 1, "executed_at": -1 }` | Compound |
+| `command_logs` | `{ "executed_at": 1 }` | TTL 90 days |
 | `refresh_tokens` | `{ "token_hash": 1 }` | Unique |
 | `refresh_tokens` | `{ "expires_at": 1 }` | TTL 0s |
 | `device_pairings` | `{ "user_id": 1, "status": 1 }` | Compound |

@@ -17,25 +17,26 @@ NEW (Setu):    User speaks → AI executes → User sees completed work
 
 ## 2. Onboarding Flow (First Launch)
 
+> [!NOTE]
+> * **Current Phase:** 3-Step Wizard (Name → Microphone Test → Permissions + EULA → Done).
+> * **Target Phase (Step 23):** 8-Step Wizard (adds language selections, live voice previews, phone pairing, screenshot preferences).
+
 ```mermaid
 graph TD
     A[Launch App] --> B[Auth Screen — Google / GitHub OAuth]
     B -->|Success| C{First login?}
     B -->|Failure| B1[Error toast + retry]
     B1 --> B
-    C -->|Yes| D[Step 2: What should I call you?]
     C -->|No| Z[Dashboard]
-    D --> E[Step 3: Choose language — English / Hindi / Auto]
-    E --> F[Step 4: Choose voice — Female / Male + audio preview]
-    F --> G[Step 5: Permission Wizard + EULA]
-    G --> H[Step 6: Pair your phone — show PIN + QR code]
-    H --> I[Step 7: Screenshot preference — Always / Ask / Never]
-    I --> J[Step 8: Hey Setu, I'm ready → animated done screen]
-    J --> Z
+    C -->|Yes| D[Step 1: What should I call you?]
+    D --> E[Step 2: Test Microphone]
+    E --> F[Step 3: Permission Wizard + EULA]
+    F --> G[Step 4: Done Screen]
+    G --> Z
 ```
 
-**Each step PATCHes `/api/v1/user/profile/` before advancing.**
-**Step 6 (phone pairing) is skippable — user can pair later from Settings.**
+**Each step PATCHes user preference profiles before advancing.**
+**Advanced features (phone pairing, language/voice, screenshots) can be modified in settings.**
 
 ---
 

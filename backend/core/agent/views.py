@@ -1,5 +1,8 @@
+# pyrefly: ignore [missing-import]
 from rest_framework.views import APIView
+# pyrefly: ignore [missing-import]
 from rest_framework.response import Response
+# pyrefly: ignore [missing-import]
 from rest_framework import status
 import uuid
 from core.users.auth import PyJWTAuthentication
@@ -44,3 +47,22 @@ class StatusView(APIView):
             "status": "pending",
             "result": None
         })
+
+class CommandLogListView(APIView):
+    authentication_classes = [PyJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .models import CommandLog
+        logs = CommandLog.objects(user_id=request.user.user_id).order_by('-executed_at')[:50]
+        serialized_logs = []
+        for log in logs:
+            serialized_logs.append({
+                "log_id": log.log_id,
+                "tool_name": log.tool_name,
+                "tool_input": log.tool_input,
+                "tool_output": log.tool_output,
+                "status": log.status.upper(),
+                "executed_at": log.executed_at.isoformat() if log.executed_at else None
+            })
+        return Response({"results": serialized_logs}, status=status.HTTP_200_OK)

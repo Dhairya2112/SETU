@@ -6,20 +6,23 @@
 
 ## 1. Global Navigation Architecture
 
-### Laptop Dashboard Routes
+### Laptop Dashboard Routes & View-State Switching
 
-| Route | Description |
-|---|---|
-| `/` | Landing / auth check redirect |
-| `/auth` | OAuth login (Google / GitHub) |
-| `/onboarding/*` | 8-step setup wizard (first-time only) |
-| `/dashboard` | Main task dashboard |
-| `/dashboard/history` | Task history log |
-| `/dashboard/devices` | Paired phone devices |
-| `/dashboard/settings` | Preferences, permissions, account |
-| `/dashboard/contacts` | Contacts store |
-| `/dashboard/memory` | Setu's memory about you (view/delete) |
-| `*` (404) | Not Found fallback |
+> [!NOTE]
+> Currently, to avoid router HMR lag during development, navigation between sidebar views (`TaskFeed`, `History`, `Devices`, `Memory`, `Contacts`) is handled dynamically using local state variables (`activeTab`) within `/dashboard` instead of routing sub-paths. Explicit router sub-paths will be introduced under **Step 17** alongside the local discovery protocol.
+
+| Route / Tab State | Type | Description |
+|---|---|---|
+| `/` | Route | Landing / auth check redirect |
+| `/auth` | Route | OAuth login (Google / GitHub) |
+| `/onboarding/*` | Route | Setup wizard (first-time only; currently 3 steps, target 8 steps) |
+| `/dashboard` | Route | Main cockpit. Renders view tabs based on state: |
+| ↳ `TaskFeed` | Tab State | Main task execution feed & voice recorder |
+| ↳ `History` | Tab State | Expandable logs of past sessions |
+| ↳ `Devices` | Tab State | Paired remote mobile controllers |
+| ↳ `Memory` | Tab State | Extracted user preference facts database |
+| ↳ `Contacts` | Tab State | Secure phone/email contacts list |
+| `*` (404) | Route | Not Found fallback |
 
 ### Global States (all routes)
 
@@ -31,20 +34,22 @@
 
 ## 2. Onboarding Wizard (First Login)
 
-An 8-step wizard with progress bar. Each step saves to backend before advancing.
+Setu implements a step-by-step onboarding wizard.
+* **Current Phase:** 3-Step Wizard (Name → Microphone Test → Permissions + EULA → Done).
+* **Target Phase (Step 23):** 8-Step Wizard (adding language selections, live voice previews, phone pairing, screenshot preferences).
 
 ```mermaid
 graph TD
     A[/auth] -->|OAuth success| B{First login?}
     B -->|No| Z[/dashboard]
-    B -->|Yes| C[Step 2: What should I call you?]
-    C --> D[Step 3: Choose language]
-    D --> E[Step 4: Choose voice gender]
-    E --> F[Step 5: Permissions + EULA]
-    F --> G[Step 6: Pair your phone]
-    G -->|Paired or Skip| H[Step 7: Screenshot preference]
-    H --> I[Step 8: Done — Hey Setu!]
-    I --> Z
+    B -->|Yes| C[Step 1: Your Name]
+    C --> D[Step 2: Test Microphone]
+    D --> E[Step 3: Permissions + EULA]
+    E --> Z
+    
+    style C fill:#8052ff,stroke:#333,stroke-width:2px,color:#fff
+    style D fill:#8052ff,stroke:#333,stroke-width:2px,color:#fff
+    style E fill:#8052ff,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 ### Step-by-Step UI

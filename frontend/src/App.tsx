@@ -6,12 +6,71 @@ import { NeuralMesh } from './components/NeuralMesh';
 import { TitleBar } from './components/TitleBar';
 import { useAppStore } from './store/useAppStore';
 
+import { useEffect, useCallback, useRef } from 'react';
+
 function App() {
   const navigate = useNavigate();
-  const { setToken, onboardingCompleted } = useAppStore();
+  const { token, refreshToken, setToken, setRefreshToken, logout, onboardingCompleted } = useAppStore();
 
-  const handleLoginSuccess = (newToken: string) => {
+  const isRefreshingRef = useRef(false);
+  const refreshTokenRef = useRef(refreshToken);
+
+  // Keep ref updated with latest token
+  useEffect(() => {
+    refreshTokenRef.current = refreshToken;
+  }, [refreshToken]);
+
+  const refreshAccessToken = useCallback(async () => {
+    const rt = refreshTokenRef.current;
+    if (!rt || isRefreshingRef.current) return null;
+
+    isRefreshingRef.current = true;
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/auth/refresh/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: rt })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.access_token && data.refresh_token) {
+          setToken(data.access_token);
+          setRefreshToken(data.refresh_token);
+          console.log("Token refreshed successfully.");
+          return data.access_token;
+        }
+      } else if (response.status === 401 || response.status === 403) {
+        console.error("Refresh token invalid or expired, logging out.");
+        logout();
+      } else {
+        console.error("Transient error refreshing token:", response.status);
+      }
+    } catch (err) {
+      console.error("Error refreshing token:", err);
+    } finally {
+      isRefreshingRef.current = false;
+    }
+    return null;
+  }, [setToken, setRefreshToken, logout]);
+
+  // Periodic refresh loop + initial refresh on boot
+  useEffect(() => {
+    if (!refreshToken) return;
+
+    // Refresh immediately on load if we have a refresh token
+    refreshAccessToken();
+
+    // Refresh every 10 minutes (600,000 ms)
+    const interval = setInterval(() => {
+      refreshAccessToken();
+    }, 600000);
+
+    return () => clearInterval(interval);
+  }, [refreshToken, refreshAccessToken]);
+
+  const handleLoginSuccess = (newToken: string, newRefreshToken: string) => {
     setToken(newToken);
+    setRefreshToken(newRefreshToken);
     navigate(onboardingCompleted ? '/dashboard' : '/onboarding/name');
   };
 

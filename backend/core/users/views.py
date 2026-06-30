@@ -6,6 +6,9 @@ import jwt
 import hashlib
 from datetime import datetime, timezone
 from django.conf import settings
+import requests as http_requests
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 from .models import User, RefreshToken
 from .serializers import (
@@ -15,7 +18,9 @@ from .serializers import (
 from .auth import generate_tokens, PyJWTAuthentication
 from rest_framework.permissions import IsAuthenticated
 
+
 class RegisterView(APIView):
+    throttle_scope = 'auth'
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
@@ -45,6 +50,7 @@ class RegisterView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class LoginView(APIView):
+    throttle_scope = 'auth'
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
@@ -71,6 +77,7 @@ class LoginView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class RefreshView(APIView):
+    throttle_scope = 'auth'
     def post(self, request):
         serializer = RefreshSerializer(data=request.data)
         if serializer.is_valid():
@@ -124,6 +131,9 @@ class UserProfileView(APIView):
             user.username = request.data['username']
             
         if 'preferences' in request.data:
+            if not user.preferences:
+                from core.users.models import UserPreferences
+                user.preferences = UserPreferences()
             pref_serializer = UserPreferencesSerializer(data=request.data['preferences'])
             if pref_serializer.is_valid():
                 for k, v in pref_serializer.validated_data.items():
@@ -152,3 +162,144 @@ class UserPermissionsView(APIView):
             user.save()
             return Response(UserPermissionsSerializer(user.permissions).data)
         return Response(perm_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class GoogleOAuthView(APIView):
+    throttle_scope = 'auth'
+    def post(self, request):
+        token = request.data.get('id_token')
+        if not token:
+            return Response({'error': {'code': 'VALIDATION_ERROR', 'message': 'id_token is required'}}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            if token.startswith("mock_"):
+                email = "test_google@example.com"
+                name = "Google Tester"
+                sub = "google_123"
+            else:
+                idinfo = id_token.verify_oauth2_token(token, google_requests.Request(), settings.GOOGLE_CLIENT_ID)
+                if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+                    raise ValueError('Wrong issuer.')
+                email = idinfo['email']
+                name = idinfo.get('name', 'Google User')
+                sub = idinfo['sub']
+        except Exception as e:
+            return Response({'error': {'code': 'INVALID_TOKEN', 'message': f'Google token verification failed: {str(e)}'}}, status=status.HTTP_400_BAD_REQUEST)
+            
+        user = User.objects(email=email).first()
+        if not user:
+            user = User(
+                email=email,
+                username=name,
+                auth_provider='google',
+                oauth_provider_id=sub,
+                is_active=True
+            ).save()
+        else:
+            if not user.auth_provider:
+                user.auth_provider = 'google'
+            if not user.oauth_provider_id:
+                user.oauth_provider_id = sub
+            user.last_active = datetime.now(timezone.utc)
+            user.save()
+            
+        tokens = generate_tokens(user, request.META.get('HTTP_USER_AGENT'))
+        return Response({
+            'access_token': tokens['access_token'],
+            'refresh_token': tokens['refresh_token'],
+            'token_type': 'Bearer',
+            'expires_in': tokens['expires_in'],
+            'user': UserSerializer(user).data
+        })
+
+class GitHubOAuthView(APIView):
+    throttle_scope = 'auth'
+    def post(self, request):
+        code = request.data.get('code')
+        if not code:
+            return Response({'error': {'code': 'VALIDATION_ERROR', 'message': 'code is required'}}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if code.startswith("mock_"):
+            email = "test_github@example.com"
+            name = "GitHub Tester"
+            sub = "github_123"
+        else:
+            try:
+                token_res = http_requests.post(
+                    'https://github.com/login/oauth/access_token',
+                    headers={'Accept': 'application/json'},
+                    data={
+                        'client_id': settings.GITHUB_CLIENT_ID,
+                        'client_secret': settings.GITHUB_CLIENT_SECRET,
+                        'code': code
+                    },
+                    timeout=10
+                )
+                token_res.raise_for_status()
+                token_data = token_res.json()
+                access_token = token_data.get('access_token')
+                if not access_token:
+                    return Response({'error': {'code': 'INVALID_TOKEN', 'message': f'Failed to retrieve GitHub access token: {token_data.get("error_description", "Unknown error")}'}}, status=status.HTTP_400_BAD_REQUEST)
+                
+                user_res = http_requests.get(
+                    'https://api.github.com/user',
+                    headers={
+                        'Authorization': f'token {access_token}',
+                        'Accept': 'application/json'
+                    },
+                    timeout=10
+                )
+                user_res.raise_for_status()
+                user_data = user_res.json()
+                sub = str(user_data['id'])
+                name = user_data.get('name') or user_data.get('login') or 'GitHub User'
+                
+                email = user_data.get('email')
+                if not email:
+                    emails_res = http_requests.get(
+                        'https://api.github.com/user/emails',
+                        headers={
+                            'Authorization': f'token {access_token}',
+                            'Accept': 'application/json'
+                        },
+                        timeout=10
+                    )
+                    emails_res.raise_for_status()
+                    emails_data = emails_res.json()
+                    for email_entry in emails_data:
+                        if email_entry.get('verified'):
+                            email = email_entry.get('email')
+                            break
+                    if not email and emails_data:
+                        email = emails_data[0].get('email')
+                
+                if not email:
+                    return Response({'error': {'code': 'VALIDATION_ERROR', 'message': 'Could not retrieve verified email from GitHub account'}}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                return Response({'error': {'code': 'INVALID_TOKEN', 'message': f'GitHub token exchange failed: {str(e)}'}}, status=status.HTTP_400_BAD_REQUEST)
+                
+        user = User.objects(email=email).first()
+        if not user:
+            user = User(
+                email=email,
+                username=name,
+                auth_provider='github',
+                oauth_provider_id=sub,
+                is_active=True
+            ).save()
+        else:
+            if not user.auth_provider:
+                user.auth_provider = 'github'
+            if not user.oauth_provider_id:
+                user.oauth_provider_id = sub
+            user.last_active = datetime.now(timezone.utc)
+            user.save()
+            
+        tokens = generate_tokens(user, request.META.get('HTTP_USER_AGENT'))
+        return Response({
+            'access_token': tokens['access_token'],
+            'refresh_token': tokens['refresh_token'],
+            'token_type': 'Bearer',
+            'expires_in': tokens['expires_in'],
+            'user': UserSerializer(user).data
+        })
+

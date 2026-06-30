@@ -30,7 +30,7 @@ class WakeWordDetector:
     def listen_for_wake_word(self):
         while True:
             # Get audio
-            audio_chunk = np.frombuffer(self.stream.read(self.chunk_size), dtype=np.int16)
+            audio_chunk = np.frombuffer(self.stream.read(self.chunk_size, exception_on_overflow=False), dtype=np.int16)
             
             # Feed to openwakeword model
             prediction = self.oww_model.predict(audio_chunk)
@@ -44,7 +44,23 @@ class WakeWordDetector:
                         print(f"Jarvis Score: {current_score:.3f}")
                     if current_score > 0.06: # Even lower threshold for easier activation!
                         return True
-        return False
+
+    def close(self):
+        """Release audio resources."""
+        try:
+            if hasattr(self, 'stream') and self.stream:
+                self.stream.stop_stream()
+                self.stream.close()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, 'audio') and self.audio:
+                self.audio.terminate()
+        except Exception:
+            pass
+
+    def __del__(self):
+        self.close()
 
     def capture_audio_dynamic(self, max_duration=15, silence_duration=0.7) -> np.ndarray:
         print("Listening (VAD active)...")

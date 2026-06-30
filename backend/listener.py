@@ -42,14 +42,16 @@ def main():
                     is_first_interaction = False
 
                 # Continuous conversation loop
+                silence_count = 0
+                detected_lang = 'en'
                 while True:
                     # 2. Capture audio command
                     audio_data = wake_word.capture_audio_dynamic()
 
-                    # 3. Speech to Text
+                     # 3. Speech to Text
                     print("Transcribing...")
-                    text_command = stt.transcribe(audio_data)
-                    print(f"USER: {text_command}")
+                    text_command, detected_lang = stt.transcribe(audio_data)
+                    print(f"USER ({detected_lang}): {text_command}")
 
                     # Clean punctuation and check for exit commands
                     clean_command = text_command.lower()
@@ -62,9 +64,18 @@ def main():
                     # If empty, or a short phrase containing exit words
                     is_exit = False
                     if not clean_command:
-                        is_exit = True
+                        silence_count += 1
+                        if silence_count >= 2:
+                            is_exit = True
+                        else:
+                            print("No speech detected. Prompting user...")
+                            voice = 'hf_alpha' if detected_lang == 'hi' else 'af_heart'
+                            tts.speak("Are you still there?", voice=voice)
+                            continue
                     elif len(words) <= 3 and any(w in ["no", "nope", "bye", "goodbye", "thanks", "thank", "stop", "nothing"] for w in words):
                         is_exit = True
+                    else:
+                        silence_count = 0
 
                     if is_exit:
                         print("Ending conversation loop.")
@@ -79,12 +90,17 @@ def main():
                         conversation_id=session_conversation_id
                     )
 
+                    # Determine voice based on detected language
+                    voice = 'af_heart'
+                    if detected_lang == 'hi':
+                        voice = 'hf_alpha'
+
                     # 5. Text to Speech
-                    tts.speak(response)
+                    tts.speak(response, voice=voice)
 
                     # Follow up prompt
                     if not response.strip().endswith('?'):
-                        tts.speak("Anything else?")
+                        tts.speak("Anything else?", voice=voice)
 
                     print("\nListening for follow-up...")
 

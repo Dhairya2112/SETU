@@ -12,7 +12,6 @@ to avoid reloading heavy models on every task execution (Bug B3 fix).
 """
 
 import logging
-import re
 
 from celery import shared_task
 from channels.layers import get_channel_layer
@@ -54,19 +53,36 @@ def process_agent_command(text: str, conversation_id: str, user_id: str) -> bool
     # ── Notify client: thinking ───────────────────────────────────────────
     _push(channel_layer, group, 'status', 'thinking')
 
-    # ── Run agent ─────────────────────────────────────────────────────────
-    response_text = agent_instance.run(text, user_id=user_id, conversation_id=conversation_id)
-
-    # ── Stream response tokens ────────────────────────────────────────────
-    words = response_text.split(' ')
-    for i, word in enumerate(words):
-        chunk = word + (' ' if i < len(words) - 1 else '')
-        _push(channel_layer, group, 'text', chunk)
-
-    # ── Generate and stream TTS audio ─────────────────────────────────────
+    # ── Run agent & stream response tokens in real-time ──────────────────
+    response_text = ""
     try:
-        # Generate full TTS audio for the response without truncation
-        audio_b64 = tts_engine.generate_base64(response_text)
+        for token in agent_instance.run_stream(text, user_id=user_id, conversation_id=conversation_id):
+            if token:
+                _push(channel_layer, group, 'text', token)
+                response_text += token
+    except Exception as e:
+        logger.error("LLM stream failed for conversation %s: %s", conversation_id, e)
+        error_msg = "\n[Response generation interrupted due to a system error.]"
+        _push(channel_layer, group, 'text', error_msg)
+        response_text += error_msg
+
+    # ── Generate and stream TTS audio with custom preferences ─────────────
+    try:
+        from core.users.models import User
+        user = User.objects(user_id=user_id).first()
+        voice = 'af_heart'
+        speed = 1.0
+        if user and user.preferences:
+            pref = user.preferences
+            lang = pref.language or 'en'
+            gender = pref.tts_voice_gender or 'female'
+            speed = pref.tts_speed or 1.0
+            if lang == 'hi':
+                voice = 'hf_alpha' if gender == 'female' else 'hm_omega'
+            else:
+                voice = 'af_heart' if gender == 'female' else 'am_echo'
+
+        audio_b64 = tts_engine.generate_base64(response_text, voice=voice, speed=speed)
         if audio_b64:
             _push(channel_layer, group, 'audio', audio_b64)
     except Exception as e:

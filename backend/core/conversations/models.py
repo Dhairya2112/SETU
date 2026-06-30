@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 class MessageMetadata(me.EmbeddedDocument):
     intent = me.StringField(null=True)
     tool_used = me.StringField(null=True)
-    llm_model = me.StringField(default="google/gemma-2-9b-it:free")
+    llm_model = me.StringField(null=True, default=None)
     processing_time_ms = me.IntField(null=True)
     input_type = me.StringField(choices=["voice", "text"], default="text")
 

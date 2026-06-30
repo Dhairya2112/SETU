@@ -55,7 +55,6 @@ INSTALLED_APPS = [
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'allauth.socialaccount.providers.github',
-    'allauth.socialaccount.providers.microsoft',
     'django_celery_beat',
 
     # Setu apps
@@ -132,7 +131,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Allauth — OAuth only (local sign-up disabled via NoNewUsersAccountAdapter)
 ACCOUNT_EMAIL_VERIFICATION    = 'none'
-ACCOUNT_EMAIL_REQUIRED        = True
+ACCOUNT_SIGNUP_FIELDS         = ['email*', 'username*', 'password1*', 'password2*']
 SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
 SOCIALACCOUNT_EMAIL_REQUIRED  = True
 ACCOUNT_ADAPTER = 'core.users.adapters.NoNewUsersAccountAdapter'
@@ -141,8 +140,14 @@ ACCOUNT_ADAPTER = 'core.users.adapters.NoNewUsersAccountAdapter'
 # ── REST Framework ────────────────────────────────────────────────────────
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'dj_rest_auth.jwt_auth.JWTCookieAuthentication',
-    )
+        'core.users.auth.PyJWTAuthentication',
+    ),
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'auth': '5/minute',
+    }
 }
 
 REST_AUTH = {
@@ -244,3 +249,10 @@ LOGGING = {
         },
     },
 }
+
+# OAuth Credentials
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', 'dummy_google_client_id')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', 'dummy_google_client_secret')
+GITHUB_CLIENT_ID = os.environ.get('GITHUB_CLIENT_ID', 'dummy_github_client_id')
+GITHUB_CLIENT_SECRET = os.environ.get('GITHUB_CLIENT_SECRET', 'dummy_github_client_secret')
+

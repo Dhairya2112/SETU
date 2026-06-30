@@ -8,18 +8,25 @@ import base64
 class TTSEngine:
     def __init__(self):
         print("Loading Kokoro TTS...")
-        self.pipeline = KPipeline(lang_code='a') # 'a' is American English
-        self.voice = 'af_heart' # Default high-quality American female voice
+        self.pipelines = {
+            'a': KPipeline(lang_code='a'), # American English
+            'h': KPipeline(lang_code='h')  # Hindi
+        }
+        self.default_voice = 'af_heart'
         print("Kokoro TTS loaded.")
 
-    def speak(self, text: str):
+    def _get_pipeline(self, voice: str):
+        lang = 'a'
+        if voice and voice.startswith('h'):
+            lang = 'h'
+        return self.pipelines.get(lang, self.pipelines['a'])
+
+    def speak(self, text: str, voice: str = 'af_heart', speed: float = 1.0):
         print(f"Setu (TTS): {text}")
-        
-        # We don't stream playback chunk-by-chunk anymore because it causes unnatural gaps.
-        # Since our responses are ultra-short (1-2 sentences), we generate the full audio and play it seamlessly.
-        generator = self.pipeline(
-            text, voice=self.voice,
-            speed=1.0
+        pipeline = self._get_pipeline(voice)
+        generator = pipeline(
+            text, voice=voice,
+            speed=speed
         )
         
         audio_chunks = []
@@ -32,11 +39,12 @@ class TTSEngine:
             sd.play(full_audio, 24000) # Kokoro output sample rate is 24000
             sd.wait()
 
-    def generate_base64(self, text: str) -> str:
+    def generate_base64(self, text: str, voice: str = 'af_heart', speed: float = 1.0) -> str:
         """Generates TTS audio and returns it as a Base64 encoded WAV string for WebSockets."""
-        generator = self.pipeline(
-            text, voice=self.voice,
-            speed=1.0
+        pipeline = self._get_pipeline(voice)
+        generator = pipeline(
+            text, voice=voice,
+            speed=speed
         )
         
         audio_chunks = []

@@ -11,6 +11,24 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
         self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
         self.user_id = self.scope['user'].user_id
 
+        # Ownership check: verify if conversation exists and belongs to another user
+        from asgiref.sync import sync_to_async
+        from core.conversations.models import Conversation
+
+        @sync_to_async
+        def verify_conversation_ownership(conversation_id, user_id):
+            try:
+                conv = Conversation.objects(conversation_id=conversation_id).first()
+                if conv and conv.user_id != user_id:
+                    return False
+            except Exception:
+                pass
+            return True
+
+        if not await verify_conversation_ownership(self.conversation_id, self.user_id):
+            await self.close(code=4003)  # Forbidden
+            return
+
         # Conversation-scoped group — receives agent streaming messages
         self.room_group_name = f'chat_{self.conversation_id}'
         # User-scoped group — receives reminder notifications (any session)

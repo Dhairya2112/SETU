@@ -3,7 +3,7 @@ from rest_framework import serializers
 class MessageMetadataSerializer(serializers.Serializer):
     intent = serializers.CharField(required=False, allow_null=True)
     tool_used = serializers.CharField(required=False, allow_null=True)
-    llm_model = serializers.CharField()
+    llm_model = serializers.CharField(required=False, allow_null=True)
     processing_time_ms = serializers.IntegerField(required=False, allow_null=True)
     input_type = serializers.CharField()
 

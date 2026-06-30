@@ -26,8 +26,8 @@ class CommandLog(me.Document):
     meta = {
         'collection': 'command_logs',
         'indexes': [
-            'user_id',
-            '-executed_at',
+            ('user_id', '-executed_at'),
+            {'fields': ['executed_at'], 'expireAfterSeconds': 90 * 24 * 3600}
         ]
     }
 

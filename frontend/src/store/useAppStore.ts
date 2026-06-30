@@ -2,11 +2,13 @@ import { create } from 'zustand';
 
 interface AppState {
   token: string | null;
+  refreshToken: string | null;
   username: string;
   conversationId: string;
   eulaAccepted: boolean;
   onboardingCompleted: boolean;
   setToken: (token: string | null) => void;
+  setRefreshToken: (token: string | null) => void;
   setUsername: (username: string) => void;
   setConversationId: (id: string) => void;
   setEulaAccepted: (accepted: boolean) => void;
@@ -16,6 +18,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
   token: localStorage.getItem('setu_token'),
+  refreshToken: localStorage.getItem('setu_refresh_token'),
   username: localStorage.getItem('setu_preferred_name') || 'Agent',
   conversationId: localStorage.getItem('setu_conversation_id') || (() => {
     const id = crypto.randomUUID();
@@ -29,6 +32,12 @@ export const useAppStore = create<AppState>((set) => ({
     if (token) localStorage.setItem('setu_token', token);
     else localStorage.removeItem('setu_token');
     set({ token });
+  },
+
+  setRefreshToken: (refreshToken) => {
+    if (refreshToken) localStorage.setItem('setu_refresh_token', refreshToken);
+    else localStorage.removeItem('setu_refresh_token');
+    set({ refreshToken });
   },
 
   setUsername: (username) => {
@@ -53,6 +62,7 @@ export const useAppStore = create<AppState>((set) => ({
 
   logout: () => {
     localStorage.removeItem('setu_token');
+    localStorage.removeItem('setu_refresh_token');
     localStorage.removeItem('setu_conversation_id');
     localStorage.removeItem('setu_onboarding_completed');
     localStorage.removeItem('setu_eula_accepted');
@@ -60,6 +70,7 @@ export const useAppStore = create<AppState>((set) => ({
     localStorage.setItem('setu_conversation_id', newId);
     set({
       token: null,
+      refreshToken: null,
       username: 'Agent',
       conversationId: newId,
       eulaAccepted: false,

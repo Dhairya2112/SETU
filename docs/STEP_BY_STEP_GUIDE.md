@@ -17,7 +17,15 @@
 
 ## KNOWN BUGS
 
-All bugs B1–B8 are **✅ RESOLVED**. No open bugs.
+All bugs B1–B8 are **✅ RESOLVED**.
+Additionally, the deep codebase audit and UI bugs identified on June 22, 2026 are **✅ RESOLVED**:
+- **BUG-9 (Backend Model Stale Defaults):** Corrected `ai_provider` choices, `llm_model` defaults, and wake word sensitivity settings (0.5 → 0.06).
+- **BUG-10 (DRF Auth Mismatch):** Fixed DRF authentication class configuration to match custom `PyJWTAuthentication` instead of standard simple_jwt.
+- **BUG-11 (Front-End QueryClient Build Break):** Removed unused `@tanstack/react-query` import and wrapper to fix TypeScript build error.
+- **BUG-12 (Wake Word Detector Crash):** Added `exception_on_overflow=False` in `detector.py` to prevent buffer overflows from crashing the wake word thread.
+- **BUG-13 (Shell Injection / URL Truncation):** Hardened OS-level web launcher tool using Python's standard `webbrowser` library.
+- **BUG-14 (TTS/Synthesis Latency UI Block):** Refactored UI state flags to prevent input/recording overlap and correctly track async Kokoro TTS audio generation.
+- **BUG-15 (Task Stream Parser & History Accordion):** Updated parser to recognize `'agent'` message roles and added expandable session history cards.
 
 ---
 
@@ -124,25 +132,18 @@ All bugs B1–B8 are **✅ RESOLVED**. No open bugs.
 
 ---
 
-## PHASE 3.5: Dashboard Structural Overhaul
+## PHASE 3.5: Dashboard Structural Overhaul ✅ COMPLETED
 *Goal: Realign the frontend React architecture to the final design specs before diving into deep backend logic.*
 
-### ➡️ Step 12.5: Task Dashboard UI Overhaul
+### ✅ Step 12.5: Task Dashboard UI Overhaul
 
 **Prerequisites:** Step 12 complete.
 
 **File:** `frontend/src/pages/Dashboard.tsx`
 
-Replace chat-centric UI with task dashboard layout (Mocking API data for now):
-
-#### 12.5.1: Task Feed (replaces Voice/Chat tabs)
-- Each task = one card showing: command, plan steps, execution status, result.
-- Step-by-step progress within each card.
-- Single command input bar at the bottom.
-
-#### 12.5.2: Utility Sidebar Sections
-- Replace `Knowledge` and `Vault` with `Settings`, `Devices`, `Memory`, and `Contacts`.
-- Create UI shells for these sections (they will be wired to the backend in later steps).
+Replace chat-centric UI with task dashboard layout.
+- **Task Feed:** Renders task steps, progress, command input bar.
+- **Utility Sidebar:** Settings, Devices, Memory, and Contacts UI shells complete.
 
 ---
 
@@ -158,7 +159,7 @@ Replace chat-centric UI with task dashboard layout (Mocking API data for now):
 
 ---
 
-### ➡️ Step 13: OAuth Integration (Google + GitHub)
+### Step 13: OAuth Integration (Google + GitHub) ✅
 
 **Why first:** Everything downstream (cross-device, multi-user data isolation) requires real user identity.
 
@@ -202,65 +203,75 @@ path('api/v1/auth/github/', GitHubOAuthView.as_view()),
 
 ---
 
-### ⬜ Step 13.5: Reminders & Scheduled Tasks
+### ✅ Step 13.2: User Settings & Sandbox Unification (Gaps Fix)
 
-**Prerequisites:** Step 13 complete.
+**Why now:** Unify preferences schema and sandboxing logic between UI and backend.
 
-#### 13.5.1: Reminder REST API & Serializer
-**Files:** `backend/core/tasks/views.py`, `backend/core/tasks/serializers.py`
-- Create `ReminderSerializer` for the `Reminder` MongoEngine model.
-- Validate that `trigger_at` is in the future.
-- Use `dateparser` to parse natural language times if needed.
-- Implement views:
-  - `GET /api/v1/reminders/` → returns active user reminders (`is_completed=False`)
-  - `POST /api/v1/reminders/` → creates a reminder
-  - `DELETE /api/v1/reminders/{id}/` → cancels/deletes a reminder
+#### 13.2.1: Add Missing Preference Fields in DB
+- **Files:** `backend/core/users/models.py`, `backend/core/users/serializers.py`
+- Add `tts_voice_gender` (String), `screenshot_preference` (String), and `trust_mode` (Boolean) to `UserPreferences` model and `UserPreferencesSerializer`.
+- Add `whitelisted_paths` (List of Strings) to user preferences.
 
-#### 13.5.2: `set_reminder` Agent Tool
-**File:** `backend/core/agent/tools.py`
-- Add `@tool` `set_reminder(title: str, trigger_at: str, description: str = "") -> str`:
-  - `trigger_at` should accept absolute ISO timestamp or natural language strings (e.g. "tomorrow at 5pm", "in 15 minutes").
-  - Parse `trigger_at` using `dateparser.parse()`.
-  - Save `Reminder` document with `user_id`, `title`, `trigger_at`, and `is_completed=False`.
-
-#### 13.5.3: Celery Beat Scheduler
-**Files:** `backend/setu/celery.py`, `backend/core/tasks/tasks.py`
-- Create a Celery task `check_reminders` scheduled via Celery Beat (runs every 30 seconds).
-- Query MongoDB for reminders where `trigger_at <= now` and `is_completed=False`.
-- For each matching reminder:
-  - Send a real-time WebSocket alert to the user's active session (`AgentStreamConsumer` channel group) with `chunk_type: "reminder_alert"` and payload.
-  - Mark `is_completed=True` and save.
-
-#### 13.5.4: URL Registration
-**File:** `backend/setu/urls.py`
-- Register endpoints: `/api/v1/reminders/` and `/api/v1/reminders/<reminder_id>/`.
+#### 13.2.2: Sandbox Whitelist Verification
+- **File:** `backend/core/agent/safety.py`
+- Update `is_path_allowed(target_path, user_id)` to load preferences for the user.
+- Allow file tool operations if path is inside `Path.home()` OR is a subpath of any path listed in `whitelisted_paths` (provided it's not a blocked system folder).
+- Map whitelist settings panel changes in `Dashboard.tsx` to update `/api/v1/user/profile/`.
 
 ---
 
-### ⬜ Step 14: Multilingual STT + TTS Voice Selection
+### ✅ Step 13.5: Reminders & Scheduled Tasks
+
+**Files:** `backend/core/tasks/views.py`, `backend/core/tasks/serializers.py`, `backend/core/agent/tools.py`
+- Create `ReminderSerializer` and CRUD views for `Reminder` MongoEngine model.
+- `@tool` `set_reminder` registered and parses time string using `dateparser.parse()`.
+- Celery Beat scans `check_reminders` every 30s and streams `chunk_type: "reminder"` to user via channels.
+- Frontend reminders widget fully integrated with active listing/deletion in `Dashboard.tsx`.
+
+---
+
+### ✅ Step 14: Multilingual STT + TTS Voice Selection
 
 **Prerequisites:** Step 13.5 complete.
 
-
-#### 14.1: STT Model Swap
+#### 14.1: STT Model Swap ✅
 **File:** `backend/core/ai/stt.py`
 - Change `WhisperModel('small.en')` → `WhisperModel('small')` (multilingual)
 - Auto-detect language from transcription result
 - Pass detected language code to TTS for matching voice selection
 
-#### 14.2: TTS Voice Selection
+#### 14.2: TTS Voice & Speed Integration ✅
 **File:** `backend/core/ai/tts.py`
-- Add `lang_code` and `gender` parameters to `TTSEngine.__init__`
-- English Female: `KPipeline(lang_code='a')`, voice `af_heart`
-- English Male: `KPipeline(lang_code='a')`, voice `am_echo`
-- Hindi Female: `KPipeline(lang_code='h')`, voice `hf_alpha`
-- Hindi Male: `KPipeline(lang_code='h')`, voice `hm_omega`
-- Load user's `tts_voice_gender` and `language` from their preferences on agent init
+- Update `TTSEngine` to accept `voice` and `speed` dynamically:
+  - English Female: `KPipeline(lang_code='a')`, voice `af_heart`
+  - English Male: `KPipeline(lang_code='a')`, voice `am_echo`
+  - Hindi Female: `KPipeline(lang_code='h')`, voice `hf_alpha`
+  - Hindi Male: `KPipeline(lang_code='h')`, voice `hm_omega`
+- Celery `process_agent_command` reads `user.preferences.language` and `tts_voice_gender` before calling `generate_base64()`.
 
-#### 14.3: Language Preference Wiring
-- `SetuAgent.__init__` reads `user.preferences.language` and `tts_voice_gender`
-- Passes correct lang_code + voice to `TTSEngine`
-- Celery task `process_agent_command` fetches user prefs before invoking agent
+#### 14.3: Real Token Streaming (WebSocket) ✅
+- **File:** `backend/core/agent/tasks.py`
+- Replace fake splits/loops with a LangGraph message stream that pushes chunks over the channel layer in real time.
+
+#### 14.4: Hardware-Adaptive STT Auto-Detection & Unloading ✅
+- **File:** `backend/core/ai/stt.py`
+- Detect host RAM (>=12GB loads `large-v3-turbo`, otherwise `small`).
+- Integrate explicit `del model` and `gc.collect()` routines to free memory when switching models.
+- Apply bilingual prompts and VAD tuning.
+
+
+---
+
+### ✅ Step 14.5: Local Listener & Audit Logs Hookup
+
+#### 14.5.1: Local Listener Permission Bypass
+- **File:** `backend/core/agent/permissions.py`
+- Add an exception in `check_permission` for `user_id == "local"` to return `True` for Level 2 commands. Allows terminal-based `listener.py` voice triggers to control the desktop without database auth checks.
+
+#### 14.5.2: Audit Logs Endpoint
+- **Files:** `backend/core/agent/views.py`, `backend/setu/urls.py`
+- Create `CommandLogListView` to return real command execution logs for the current user.
+- Connect TanStack query in `Dashboard.tsx` settings/permissions audit logs panel.
 
 ---
 
