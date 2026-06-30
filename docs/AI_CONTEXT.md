@@ -22,9 +22,9 @@ Setu is a **private, voice-native, cross-device AI automation engine** for Windo
 | Item | Status |
 |---|---|
 | **Brand name** | ✅ Setu (सेतु) — confirmed |
-| **Completed foundation** | Phases 1–3: Django backend, LangGraph agent, WebSocket, MongoDB, React frontend, permission system, OS tools |
-| **Current Priority** | Phase 4: Setu MVP Sprint — July 20, 2026 deadline |
-| **Active Step** | Step 13 — OAuth Integration (Google + GitHub) |
+| **Completed foundation** | Phases 1–4A: Django backend, LangGraph agent, WebSocket, MongoDB, React frontend, permission system, OS tools, OAuth, Reminders, Audits, and Step 14.6 Speed Optimizations |
+| **Current Priority** | Phase 4B: Local Efficiency & Cache |
+| **Active Step** | Step 15 — Intent Pre-Classifier (PyTorch) |
 | **All known bugs (B1–B8)** | ✅ Fully resolved |
 
 **Do NOT implement anything from Phase 5 (Post-MVP) or beyond unless explicitly instructed.**

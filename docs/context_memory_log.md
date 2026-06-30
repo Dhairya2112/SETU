@@ -108,6 +108,32 @@ This log tracks every modification, cleanup, and feature implementation in detai
 
 ---
 
-## ➡️ Next Session Plan: Step 15 & 16 (Refinement & Production Packaging)
-- Conduct end-to-end integration test of the agent voice loop with live WebSocket streaming and OAuth.
-- Perform packaging optimizations and prepare configuration templates for production deployment.
+## 📅 July 1, 2026
+
+### 🕒 02:25 AM | Step 14.6 Speed Optimizations (Tier 0 Fast-Path & TTS Cache)
+- **Target Files**:
+  - `backend/core/agent/fast_responses.py` (New)
+  - `backend/core/agent/tts_cache.py` (New)
+  - `backend/core/agent/tasks.py`
+  - `backend/core/websockets/consumers.py`
+  - `backend/listener.py`
+  - `frontend/src/hooks/useAgentSocket.ts`
+  - `docs/STEP_BY_STEP_GUIDE.md`
+  - `docs/APP_FLOW.md`
+  - `docs/PROJECT_VISION.md`
+  - `docs/AI_CONTEXT.md`
+- **Actions**:
+  - **Tier 0 Fast Router**: Created `FastResponseRouter` with pre-compiled regex patterns to match simple statements (greetings, thanks, farewells, cancel) in English, Hindi, and Hinglish. Personalizes output using the user's preferred name.
+  - **TTS Cache**: Implemented a thread-safe `TTSCache` that lazily caches synthesized speech (base64 WAV strings) keyed by `(text, voice)`. Eliminates the 1–2s Kokoro TTS generation delay for common responses.
+  - **Instant WebSocket Ack**: Modified consumer and frontend hook to send and parse a `status: acknowledged` event immediately upon WebSocket command arrival. Reduces perceived response time to < 200ms.
+  - **User Preference Cache**: Added 5-minute in-memory caching of user display names and voice options in Celery task thread, eliminating repeated MongoDB database query overhead on every command.
+  - **Local Loop Integration**: Integrated the fast-path router into `listener.py` voice handler loop.
+- **Status**: Compiles cleanly with zero compilation errors in frontend (`tsc --noEmit`) and backend (`python manage.py check`). Verified using custom integration script `test_speed_optimization.py` demonstrating < 1ms cache hits and successful regex matching.
+
+---
+
+## ➡️ Next Session Plan: Step 15 & 16 (Intent Classifier & Semantic Cache)
+- Train and integrate the local PyTorch-based intent classifier model (`Hey Setu Intent Classifier`).
+- Integrate classifier inference inside `tasks.py` (Tier 1 execution).
+- Swap in-memory LLM cache with Redis semantic cache.
+
