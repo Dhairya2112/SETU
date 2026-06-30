@@ -9,6 +9,7 @@ from wake_word.detector import WakeWordDetector
 from ai.stt import STTPipeline
 from agent.llm_agent import SetuAgent
 from ai.tts import TTSEngine
+from agent.fast_responses import FastResponseRouter
 
 def main():
     print("--- Starting Setu Agent ---")
@@ -18,6 +19,7 @@ def main():
     stt = STTPipeline()
     agent = SetuAgent()
     tts = TTSEngine()
+    fast_router = FastResponseRouter()
 
     # Stable session IDs for the local voice loop.
     # Using "local" as user_id — permissions.py allows L1 tools without a DB user.
@@ -82,6 +84,19 @@ def main():
                         tts.speak("Alright, I'll be here if you need me!")
                         break
 
+                    # Determine voice based on detected language
+                    voice = 'af_heart'
+                    if detected_lang == 'hi':
+                        voice = 'hf_alpha'
+
+                    # 3.5. Tier 0 fast-path — instant response for greetings, etc.
+                    fast = fast_router.check(text_command, user_name="User", language=detected_lang)
+                    if fast:
+                        print(f"[Tier 0 — {fast.category}] {fast.text}")
+                        tts.speak(fast.text, voice=voice)
+                        print("\nListening for follow-up...")
+                        continue
+
                     # 4. Agent Execution — pass user_id and conversation_id
                     print("Agent is thinking...")
                     response = agent.run(
@@ -89,11 +104,6 @@ def main():
                         user_id=LOCAL_USER_ID,
                         conversation_id=session_conversation_id
                     )
-
-                    # Determine voice based on detected language
-                    voice = 'af_heart'
-                    if detected_lang == 'hi':
-                        voice = 'hf_alpha'
 
                     # 5. Text to Speech
                     tts.speak(response, voice=voice)

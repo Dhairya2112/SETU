@@ -254,9 +254,34 @@ PyTorch is used where it adds genuine functional value — not for show.
 
 ---
 
-## 10. Reliability Architecture — Keeping Setu Always Alive
+## 10. Reliability & Speed Architecture — Keeping Setu Always Alive & Fast
 
-No offline fallback. Instead, the architecture is designed so cloud LLM limits are nearly impossible to hit.
+No offline fallback. Instead, the architecture is designed so cloud LLM limits are nearly impossible to hit, and common interactions feel instant.
+
+### 10.0 Tier 0 — Fast Response Router (Regex)
+
+A lightweight regex/keyword matcher that intercepts trivial commands **before** any ML model runs:
+
+```
+Command → Regex match (instant, zero-cost)
+    ├── GREETING       → "Hey {name}! What can I do for you?"
+    ├── FAREWELL       → "Goodbye {name}! I'll be here."
+    ├── THANKS         → "You're welcome! Need anything else?"
+    ├── HOW_ARE_YOU    → "I'm great! What can I help with?"
+    ├── WHAT_ARE_YOU   → "I'm Setu, your AI assistant..."
+    ├── CANCEL         → "Alright, cancelled!"
+    └── No match       → pass to Intent Classifier (10.1)
+```
+
+**Result:** Greetings/farewells respond in < 0.3s. No LLM, no classifier, no TTS generation (uses pre-cached audio).
+
+### 10.0.1 Pre-cached TTS Audio Bank
+
+Common Tier 0 responses have TTS audio pre-generated at startup and cached in memory:
+
+- ~20–30 phrases × user's selected voice variant
+- Lazily built per voice on first use (~2–3 MB per voice)
+- Eliminates 1–2s of TTS generation for cached responses
 
 ### 10.1 Intent Pre-Classifier (PyTorch)
 
@@ -317,10 +342,19 @@ If everything somehow fails, Setu does not go silent:
 
 Command stays in Redis queue, auto-retries. User sees a spinner, not a dead screen.
 
+### 10.8 Instant Acknowledgment & Streaming TTS
+
+- **Instant ack:** On receiving any command, immediately send an acknowledgment ("On it!") so the user knows Setu heard them — even before LLM starts processing.
+- **Streaming TTS:** Instead of generating audio for the full response at once, split into sentences and stream audio sentence-by-sentence. User hears the first sentence ~0.3s after text is ready.
+
 ### Combined Impact
 
-| Strategy | Calls Reduced | Reliability Gain |
+| Strategy | Calls Reduced | Speed Gain |
 |---|---|---|
+| Tier 0 fast router | ~10–15% (greetings/small talk) | **< 0.3s** for matched commands |
+| Pre-cached TTS bank | — | **Eliminates 1–2s TTS** for common phrases |
+| Instant acknowledgment | — | **Perceived < 0.2s** response time |
+| Streaming TTS | — | **First word 0.3s** after text ready |
 | Intent pre-classifier | ~60–70% | High |
 | Semantic cache | ~20% | Medium |
 | Context compression | ~30% fewer tokens/call | Medium |
@@ -328,7 +362,7 @@ Command stays in Redis queue, auto-retries. User sees a spinner, not a dead scre
 | Deduplication | ~10% | Medium |
 | Backup keys | — | High |
 
-**Net effect:** Setu uses ~30–40% of the API quota she would without these strategies. Free tier limits effectively become 2.5–3x larger.
+**Net effect:** Setu uses ~30–40% of the API quota she would without these strategies. Free tier limits effectively become 2.5–3x larger. Common interactions feel instant.
 
 ---
 

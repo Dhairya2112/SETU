@@ -105,23 +105,48 @@ sequenceDiagram
 
 ---
 
-## 5. Intent Classification Flow
+## 5. 3-Tier Response Architecture (Speed Optimization)
+
+Every command passes through a tiered pipeline. The goal: **exit as early as possible** to avoid unnecessary LLM calls and TTS generation.
 
 ```
-User command (text)
+User command (text from STT)
         │
         ▼
-IntentClassifier (local PyTorch — instant, free)
+Tier 0: Fast Response Router (regex/keyword — instant, free)
+        │
+        ├── GREETING       → "Hey {name}! What can I do for you?"     → pre-cached TTS audio
+        ├── FAREWELL        → "Goodbye {name}! I'll be here."          → pre-cached TTS audio
+        ├── THANKS          → "You're welcome! Need anything else?"    → pre-cached TTS audio
+        ├── HOW_ARE_YOU     → "I'm great! What can I help with?"      → pre-cached TTS audio
+        ├── WHAT_ARE_YOU    → "I'm Setu, your AI assistant..."        → pre-cached TTS audio
+        ├── CANCEL          → "Alright, cancelled!"                    → pre-cached TTS audio
+        │
+        └── No match? → Continue to Tier 1
+                │
+                ▼
+Tier 1: IntentClassifier (local PyTorch — instant, free)
         │
         ├── OPEN_APP_LAPTOP   → open_application(app_name) — no LLM
         ├── OPEN_APP_PHONE    → deep link to phone — no LLM
         ├── SYSTEM_INFO       → get_system_info() — no LLM
         ├── REPEAT_LAST       → Redis lookup → re-execute — no LLM
         ├── TIME_DATE         → get_current_time() — no LLM
-        └── COMPLEX_TASK      → LangGraph Agent → LLM pipeline
+        │
+        └── COMPLEX_TASK → Continue to Tier 2
+                │
+                ▼
+Tier 2: LangGraph Agent → LLM pipeline (Primary → Secondary → Tertiary)
 ```
 
-~60–70% of commands never reach the LLM.
+**Combined effect:** ~80% of commands never reach the LLM.
+
+| Tier | Latency | What It Handles | LLM Cost |
+|---|---|---|---|
+| **Tier 0** | < 0.3s | Greetings, farewells, thanks, small talk | Zero |
+| **Tier 1** | < 0.5s | App launches, system info, repeat, time | Zero |
+| **Tier 2** | 2–6s | Multi-step tasks, web searches, file ops | Full |
+
 
 ---
 

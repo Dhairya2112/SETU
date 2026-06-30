@@ -49,6 +49,13 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
             data = json.loads(text_data)
             command_text = data.get('text')
             if command_text:
+                # ── Instant acknowledgment (Step 14.6.3) ──────────────────
+                # Send immediately so the user knows Setu heard them (~200ms)
+                await self.send(text_data=json.dumps({
+                    'chunk_type': 'status',
+                    'message': 'acknowledged'
+                }))
+
                 from asgiref.sync import sync_to_async
                 from core.agent.tasks import process_agent_command
                 await sync_to_async(process_agent_command.delay)(

@@ -134,7 +134,11 @@ export function useAgentSocket({ token, conversationId, onReminderFired }: Agent
                   });
               }
           } else if (data.chunk_type === 'status') {
-              if (data.message === 'thinking') {
+              if (data.message === 'acknowledged') {
+                  // Instant ack — Setu heard the command (< 200ms)
+                  setIsThinking(true);
+                  isStreamingRef.current = false;
+              } else if (data.message === 'thinking') {
                   setIsThinking(true);
                   isStreamingRef.current = false;
               } else if (data.message === 'done') {

@@ -275,6 +275,111 @@ path('api/v1/auth/github/', GitHubOAuthView.as_view()),
 
 ---
 
+### ⬜ Step 14.6: Speed Optimizations (Tier 0 Fast-Path + TTS Cache)
+
+**Prerequisites:** Step 14.5 complete.
+
+**Purpose:** Make Setu feel instant for common interactions. Greetings, farewells, and simple queries should respond in < 0.3s instead of 4–10s. This is the first layer of the 3-tier response architecture — Tier 1 (Intent Classifier) comes in Step 15.
+
+#### 14.6.1: Tier 0 — Instant Response Router
+**New File:** `backend/core/agent/fast_responses.py`
+
+Regex/keyword matcher that intercepts commands **before** the LLM pipeline. Returns a pre-defined response for trivial interactions.
+
+Pattern categories:
+- `GREETING` — "hi", "hello", "hey", "hey setu", "good morning", "namaste", "kaise ho"
+- `FAREWELL` — "bye", "goodbye", "see you", "good night", "alvida"
+- `THANKS` — "thanks", "thank you", "appreciate it", "shukriya", "dhanyavaad"
+- `HOW_ARE_YOU` — "how are you", "how're you doing", "kaise ho", "kya haal hai"
+- `WHAT_ARE_YOU` — "what are you", "who are you", "what can you do"
+- `CANCEL` — "cancel", "stop", "never mind", "forget it", "rehne de"
+
+```python
+class FastResponseRouter:
+    def check(self, text: str, user_name: str = None) -> Optional[FastResponse]:
+        # Returns FastResponse(text, category) or None
+        # Responses are personalized with user's name
+        # Supports English, Hindi, and Hinglish patterns
+```
+
+#### 14.6.2: Pre-cached TTS Audio Bank
+**New File:** `backend/core/agent/tts_cache.py`
+
+Pre-generate TTS audio for ~20–30 common Tier 0 responses and cache in memory.
+
+- Cached per voice variant (af_heart, am_echo, hf_alpha, hm_omega)
+- Built lazily on first use per voice (not all 4 at startup)
+- Stored as `{ "response_text": "base64_audio_wav" }` in a dict
+- Total memory: ~2–3 MB per voice
+
+```python
+class TTSCache:
+    def get_or_generate(self, text: str, voice: str, tts_engine: TTSEngine) -> str:
+        # Returns base64 audio — from cache if available, else generates and caches
+```
+
+#### 14.6.3: Instant Acknowledgment
+- **WebSocket path** (`consumers.py`): Push `chunk_type: "status"` with `"acknowledged"` immediately on message receive — before Celery dispatch.
+- **Listener path** (`listener.py`): Play short spoken cue ("On it!" / "Let me check...") while LLM processes complex commands.
+- **Impact:** User knows Setu heard them within ~200ms.
+
+#### 14.6.4: Streaming TTS (Sentence-by-Sentence)
+**File:** `backend/core/ai/tts.py`, `backend/core/agent/tasks.py`
+
+Instead of generating TTS for the entire response as one block:
+1. Split response text into sentences after LLM streaming completes.
+2. Generate TTS for the first sentence → stream to client immediately.
+3. Generate remaining sentences → stream as they complete.
+
+```python
+def generate_base64_streaming(self, text: str, voice: str, speed: float) -> Generator[str, None, None]:
+    # Yields base64 audio chunks, one per sentence
+```
+
+**Impact:** User hears first words ~0.3s after text is ready, instead of waiting 1–2s for full audio.
+
+#### 14.6.5: User Preference Cache
+**File:** `backend/core/agent/tasks.py`
+
+Cache user name + voice preferences in a module-level dict to avoid MongoDB lookups on every command.
+
+```python
+_user_pref_cache = {}  # { user_id: { "name": ..., "voice": ..., "speed": ..., "lang": ..., "cached_at": ... } }
+# TTL: 5 minutes. Refreshed on cache miss or expiry.
+```
+
+#### 14.6.6: Pipeline Integration
+
+**In `tasks.py` (WebSocket path):**
+```python
+fast = fast_router.check(text, user_name=cached_prefs.name)
+if fast:
+    _push(group, 'text', fast.text)
+    _push(group, 'audio', tts_cache.get_or_generate(fast.text, voice))
+    _push(group, 'status', 'done')
+    return True
+# else → existing LLM pipeline
+```
+
+**In `listener.py` (Voice loop path):**
+```python
+fast = fast_router.check(text_command, user_name="User")
+if fast:
+    tts.speak(fast.text, voice=voice)  # or play from cache
+    continue
+# else → existing agent.run() pipeline
+```
+
+#### Expected Impact
+
+| Scenario | Before | After |
+|---|---|---|
+| "Hey Setu" / "Hi" / "Namaste" | 4–10s | **< 0.3s** |
+| "Thanks" / "Bye" / "Shukriya" | 4–10s | **< 0.3s** |
+| Complex command (first word heard) | 4–10s | **3–8s** (ack + streaming TTS saves ~1–2s) |
+
+---
+
 ### PHASE 4B: Local Efficiency & Cache (Milestone 2)
 *Goal: Implement local PyTorch intent classification and Redis semantic caching to optimize response times and API quota usage.*
 *Git Action: Commit and push to GitHub upon completing Step 16.*
