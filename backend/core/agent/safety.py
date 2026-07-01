@@ -99,19 +99,29 @@ _SYSTEM_DIRS_UNIX = [
 
 
 def _get_sandbox_root() -> Path:
-    """The sandbox root is the current user's home directory."""
-    return Path.home()
+    """The sandbox root is a dedicated subfolder in the user's home directory."""
+    sandbox_dir = Path.home() / "SetuSandbox"
+    try:
+        sandbox_dir.mkdir(exist_ok=True)
+    except Exception:
+        pass
+    return sandbox_dir
 
 
 def is_path_allowed(target_path: str, user_id: str = None) -> bool:
     """
-    Return True if `target_path` is inside the user's home directory OR any
-    user-configured whitelisted directory, and not inside a protected system directory.
+    Return True if `target_path` is inside the user's home sandbox OR any
+    user-configured whitelisted directory, and not inside a protected system directory or dotfile path.
     """
     try:
         resolved = Path(target_path).resolve()
     except (OSError, ValueError):
         return False
+
+    # 1. Block dotfiles and hidden folders (e.g. .ssh, .env)
+    for part in resolved.parts:
+        if part.startswith('.') and part not in ('.', '..'):
+            return False
 
     # Extra check: reject known system directories (handles symlinks/junctions)
     resolved_str = str(resolved)

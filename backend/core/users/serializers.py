@@ -28,6 +28,39 @@ class UserPreferencesSerializer(serializers.Serializer):
     trust_mode = serializers.BooleanField(required=False)
     whitelisted_paths = serializers.ListField(child=serializers.CharField(), required=False)
 
+    def validate_whitelisted_paths(self, value):
+        from pathlib import Path
+        for path_str in value:
+            try:
+                resolved = Path(path_str).resolve()
+                # 1. Block root directories
+                if len(resolved.parts) <= 1:
+                    raise serializers.ValidationError("Cannot whitelist a root directory path.")
+                
+                # 2. Block system directories
+                blocked_dirs = [
+                    "C:\\Windows",
+                    "C:\\Program Files",
+                    "C:\\Program Files (x86)",
+                    "C:\\ProgramData",
+                    "/etc",
+                    "/usr",
+                    "/bin",
+                    "/sbin",
+                    "/var",
+                    "/boot",
+                    "/dev"
+                ]
+                resolved_str = str(resolved).lower()
+                for sdir in blocked_dirs:
+                    if resolved_str.startswith(sdir.lower()):
+                        raise serializers.ValidationError(f"Whitelisting system directory '{sdir}' is prohibited.")
+            except Exception as e:
+                if isinstance(e, serializers.ValidationError):
+                    raise e
+                raise serializers.ValidationError(f"Invalid path structure: {e}")
+        return value
+
 class UserPermissionsSerializer(serializers.Serializer):
     level_2_granted = serializers.BooleanField(required=False)
     level_3_tools = serializers.ListField(child=serializers.CharField(), required=False)

@@ -113,6 +113,51 @@ def get_system_info(query: str = "") -> str:
     return sanitize_output(result)
 
 
+import re
+import ctypes
+
+def find_drive_by_label(target_label: str) -> str | None:
+    """Scan all active Windows drives and return the drive path matching the volume label."""
+    target_label = target_label.strip().lower()
+    if platform.system() != "Windows":
+        return None
+
+    # Scan A:\ to Z:\
+    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        drive_path = f"{letter}:\\"
+        if os.path.exists(drive_path):
+            try:
+                volume_name = ctypes.create_unicode_buffer(1024)
+                res = ctypes.windll.kernel32.GetVolumeInformationW(
+                    drive_path,
+                    volume_name,
+                    ctypes.sizeof(volume_name),
+                    None, None, None, None, 0
+                )
+                if res and volume_name.value.strip().lower() == target_label:
+                    return drive_path
+            except Exception:
+                pass
+    return None
+
+
+def _open_drive_explorer(drive_path: str, app_name: str) -> str:
+    """Helper to open the system file manager at drive_path."""
+    try:
+        if platform.system() == "Windows":
+            subprocess.Popen(f'explorer.exe "{drive_path}"', shell=True)
+        else:
+            open_cmd = "open" if platform.system() == "Darwin" else "xdg-open"
+            subprocess.Popen([open_cmd, drive_path])
+        result = f"Opened drive at {drive_path} successfully (request: '{app_name}')."
+        _log("open_application", app_name, result, "success")
+        return result
+    except Exception as e:
+        result = f"Error opening drive {drive_path}: {e}"
+        _log("open_application", app_name, result, "error")
+        return result
+
+
 @tool
 def open_application(app_name: str) -> str:
     """Open an application by name (e.g., 'chrome', 'notepad', 'code', 'spotify'). Requires Level 2 permission."""
@@ -125,6 +170,26 @@ def open_application(app_name: str) -> str:
         msg = "🚫 Invalid application name format. Safety block."
         _log("open_application", app_name, msg, "blocked")
         return msg
+
+    name_lower = app_name.strip().lower()
+
+    # ── Drive Resolver Check ──
+    # 1. Resolve by volume label (e.g. "luffy drive" -> search label "luffy")
+    label_match = re.search(r'\b([a-z0-9_\-\s]+)\s+drive\b', name_lower)
+    if label_match:
+        label = label_match.group(1).strip()
+        if len(label) > 1:
+            drive_path = find_drive_by_label(label)
+            if drive_path:
+                return _open_drive_explorer(drive_path, app_name)
+
+    # 2. Resolve by direct drive letter (e.g. "a drive", "drive a", "a:", "a:\")
+    drive_match = re.search(r'\b([a-z])\s*drive\b|\bdrive\s*([a-z])\b|\b([a-z]):', name_lower)
+    if drive_match:
+        letter = next(g for g in drive_match.groups() if g is not None).upper()
+        drive_path = f"{letter}:\\"
+        if os.path.exists(drive_path):
+            return _open_drive_explorer(drive_path, app_name)
 
     # Map common names to actual executables
     app_aliases: dict[str, list[str]] = {

@@ -171,7 +171,7 @@ class GoogleOAuthView(APIView):
             return Response({'error': {'code': 'VALIDATION_ERROR', 'message': 'id_token is required'}}, status=status.HTTP_400_BAD_REQUEST)
             
         try:
-            if token.startswith("mock_"):
+            if settings.DEBUG and token.startswith("mock_"):
                 email = "test_google@example.com"
                 name = "Google Tester"
                 sub = "google_123"
@@ -218,7 +218,7 @@ class GitHubOAuthView(APIView):
         if not code:
             return Response({'error': {'code': 'VALIDATION_ERROR', 'message': 'code is required'}}, status=status.HTTP_400_BAD_REQUEST)
             
-        if code.startswith("mock_"):
+        if settings.DEBUG and code.startswith("mock_"):
             email = "test_github@example.com"
             name = "GitHub Tester"
             sub = "github_123"

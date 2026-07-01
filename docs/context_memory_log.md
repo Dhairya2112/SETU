@@ -132,8 +132,35 @@ This log tracks every modification, cleanup, and feature implementation in detai
 
 ---
 
-## ➡️ Next Session Plan: Step 15 & 16 (Intent Classifier & Semantic Cache)
-- Train and integrate the local PyTorch-based intent classifier model (`Hey Setu Intent Classifier`).
-- Integrate classifier inference inside `tasks.py` (Tier 1 execution).
-- Swap in-memory LLM cache with Redis semantic cache.
+### 🕒 10:15 AM | Celery & Redis Stack Simplification (In-Process Concurrency)
+- **Target Files**:
+  - `backend/setu/settings.py`
+  - `backend/setu/__init__.py`
+  - `backend/core/websockets/consumers.py`
+  - `backend/core/agent/views.py`
+  - `backend/core/tasks/apps.py`
+  - `backend/requirements.txt`
+- **Actions**:
+  - **In-Memory Channel Layer**: Swapped `channels_redis.core.RedisChannelLayer` with Django Channels native `InMemoryChannelLayer` in `settings.py` to route WebSocket messages directly within memory.
+  - **Background Worker Threads**: Refactored `AgentStreamConsumer` to execute `process_agent_command` inside Python's async thread pool (`asyncio.to_thread`), and updated `CommandView` in `views.py` to run it using daemonized threads, removing Celery tasks.
+  - **Daemon Reminder Scheduler**: Implemented a background daemon thread in `core.tasks.apps.TasksConfig.ready()` to execute `check_and_fire_reminders` every 30 seconds, replacing the Celery Beat scheduler.
+  - **Celery/Redis Config Removal**: Cleaned out Celery, Celery Beat, and Redis settings from `settings.py`, removed `django_celery_beat` from `INSTALLED_APPS`, and disabled Celery initialization in `setu/__init__.py`.
+  - **Dependency Updates**: Commented out `celery`, `django-celery-beat`, `redis`, and `channels-redis` in `requirements.txt`.
+- **Status**: Verified backend using `python manage.py check` and `python manage.py migrate` (no issues). Executed custom integration tests in the scratch directory demonstrating successful in-memory group routing and correct background-threaded agent execution (Fast-Path response with Kokoro TTS audio generated and streamed to the channel layer in < 500ms).
 
+---
+
+## 📅 July 1, 2026
+
+### 🕒 10:45 AM | Security Hardening & Global Drive Resolver
+- **Target Files**:
+  - `backend/core/users/views.py`
+  - `backend/core/users/serializers.py`
+  - `backend/core/agent/safety.py`
+  - `backend/core/agent/tools.py`
+- **Actions**:
+  - **OAuth Mock Restriction**: Configured `GoogleOAuthView` and `GitHubOAuthView` to check `settings.DEBUG` before processing mock tokens/codes to prevent auth bypasses in production.
+  - **Path Whitelist Validation**: Added a validator method `validate_whitelisted_paths` in `UserPreferencesSerializer` to check and block users from adding root drives (like `C:\`, `/`) or system directories (like `C:\Windows`, `/etc`) to their whitelist.
+  - **Sandbox & Dotfile Lockdown**: Restricted the default agent file sandbox to a dedicated `SetuSandbox` directory in the user's home folder. Implemented checks inside `is_path_allowed` to block any access to dotfiles or hidden folders (such as `.ssh`, `.env`, `.aws`).
+  - **Global Drive Resolver**: Added a volume label scan utility inside `tools.py` using Windows `GetVolumeInformationW` via `ctypes` alongside regex-based drive letter matching. When users instruct Setu to open folders like "Luffy drive", "OS drive", or "A drive", the `open_application` tool resolves the correct letter and triggers File Explorer.
+- **Status**: Verified with scratch integration test `test_security_and_drive.py` demonstrating successful blocking of unauthorized whitelists, dotfile/system path rejection, and correct dynamic drive matching.

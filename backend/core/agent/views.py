@@ -26,10 +26,16 @@ class CommandView(APIView):
             conversation_id = str(uuid.uuid4())
 
         from .tasks import process_agent_command
-        task = process_agent_command.delay(text, conversation_id, request.user.user_id)
+        import threading
+        task_id = str(uuid.uuid4())
+        threading.Thread(
+            target=process_agent_command,
+            args=(text, conversation_id, request.user.user_id),
+            daemon=True
+        ).start()
         
         return Response({
-            "task_id": task.id,
+            "task_id": task_id,
             "conversation_id": conversation_id,
             "message_id": str(uuid.uuid4()),
             "status": "processing",

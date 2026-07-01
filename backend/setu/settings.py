@@ -55,8 +55,6 @@ INSTALLED_APPS = [
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'allauth.socialaccount.providers.github',
-    'django_celery_beat',
-
     # Setu apps
     'core.users',
     'core.conversations',
@@ -178,34 +176,10 @@ USE_TZ        = True
 STATIC_URL = 'static/'
 
 
-# ── Django Channels (WebSockets via Redis) ────────────────────────────────
+# ── Django Channels (WebSockets In-Memory) ────────────────────────────────
 CHANNEL_LAYERS = {
     'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [(
-                os.environ.get('REDIS_HOST', '127.0.0.1'),
-                int(os.environ.get('REDIS_PORT', 6379))
-            )],
-        },
-    },
-}
-
-
-# ── Celery ────────────────────────────────────────────────────────────────
-REDIS_URL = os.environ.get('REDIS_URL', 'redis://127.0.0.1:6379/0')
-
-CELERY_BROKER_URL        = REDIS_URL
-CELERY_RESULT_BACKEND    = REDIS_URL
-CELERY_ACCEPT_CONTENT    = ['json']
-CELERY_TASK_SERIALIZER   = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-
-# Celery Beat — Periodic tasks (Step 13)
-CELERY_BEAT_SCHEDULE = {
-    'check-and-fire-reminders': {
-        'task': 'core.tasks.tasks.check_and_fire_reminders',
-        'schedule': 30.0,  # Every 30 seconds
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
     },
 }
 

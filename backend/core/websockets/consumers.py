@@ -56,12 +56,15 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                     'message': 'acknowledged'
                 }))
 
-                from asgiref.sync import sync_to_async
+                import asyncio
                 from core.agent.tasks import process_agent_command
-                await sync_to_async(process_agent_command.delay)(
-                    command_text,
-                    self.conversation_id,
-                    self.scope["user"].user_id
+                asyncio.create_task(
+                    asyncio.to_thread(
+                        process_agent_command,
+                        command_text,
+                        self.conversation_id,
+                        self.scope["user"].user_id
+                    )
                 )
 
     # ── Handler: agent streaming chunks (text / audio / status) ──
