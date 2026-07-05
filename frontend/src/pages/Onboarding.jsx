@@ -15,7 +15,7 @@ export function Onboarding() {
       navigate('/auth');
       return;
     }
-    fetch('http://localhost:8000/api/v1/user/profile/', {
+    fetch(`http://${window.location.hostname}:8000/api/v1/user/profile/`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     .then(res => {
@@ -85,13 +85,13 @@ function StepName() {
   const [error, setError] = useState('');
   const { setUsername, token } = useAppStore();
 
-  const handleNext = async (e: React.FormEvent) => {
+  const handleNext = async (e) => {
     e.preventDefault();
     if (name.trim().length >= 1) {
       setLoading(true);
       setError('');
       try {
-        const res = await fetch('http://localhost:8000/api/v1/user/profile/', {
+        const res = await fetch(`http://${window.location.hostname}:8000/api/v1/user/profile/`, {
           method: 'PATCH',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -107,7 +107,7 @@ function StepName() {
         }
         setUsername(name.trim());
         navigate('/onboarding/hardware');
-      } catch (err: any) {
+      } catch (err) {
         console.error(err);
         setError(err.message || 'Server error. Please try again.');
       } finally {
@@ -168,8 +168,8 @@ function StepHardware() {
   const navigate = useNavigate();
   const [calibrating, setCalibrating] = useState(false);
   const [tested, setTested] = useState(false);
-  const [dbLevels, setDbLevels] = useState<number[]>(Array(12).fill(15));
-  const intervalRef = useRef<any>(null);
+  const [dbLevels, setDbLevels] = useState(Array(12).fill(15));
+  const intervalRef = useRef(null);
   
   const handleTest = () => {
     if (calibrating) return;
@@ -276,7 +276,7 @@ function StepPermissions() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch('http://localhost:8000/api/v1/user/permissions/', {
+      const res = await fetch(`http://${window.location.hostname}:8000/api/v1/user/permissions/`, {
         method: 'PATCH',
         headers: { 
           'Authorization': `Bearer ${token}`, 
@@ -290,7 +290,7 @@ function StepPermissions() {
         throw new Error('Failed to update permissions on backend.');
       }
       
-      const resProfile = await fetch('http://localhost:8000/api/v1/user/profile/', {
+      const resProfile = await fetch(`http://${window.location.hostname}:8000/api/v1/user/profile/`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -306,7 +306,7 @@ function StepPermissions() {
 
       persistEulaAccepted(true);
       navigate('/onboarding/done');
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setError(err.message || 'Server error. Please try again.');
     } finally {

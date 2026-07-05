@@ -1,6 +1,6 @@
 # Setu — UI/UX Flow & Navigation Pathways
 
-> This document defines the exact screen pathways, interaction states, and user journeys across Setu's interface suite (Laptop Dashboard + Phone App). Setu is a **task execution engine** — the UI reflects completed work, not conversations.
+This document defines the exact screen pathways, interaction states, and user journeys across Setu's interface suite (Laptop Dashboard + Phone PWA). Setu is a **task execution engine** — the UI reflects completed work, not conversations.
 
 ---
 
@@ -8,20 +8,16 @@
 
 ### Laptop Dashboard Routes & View-State Switching
 
-> [!NOTE]
-> Currently, to avoid router HMR lag during development, navigation between sidebar views (`TaskFeed`, `History`, `Devices`, `Memory`, `Contacts`) is handled dynamically using local state variables (`activeTab`) within `/dashboard` instead of routing sub-paths. Explicit router sub-paths will be introduced under **Step 17** alongside the local discovery protocol.
+Navigation between dashboard views (`TaskFeed`, `History`) is handled dynamically using local state variables (`activeTab`) within `/dashboard` instead of routing sub-paths.
 
 | Route / Tab State | Type | Description |
 |---|---|---|
 | `/` | Route | Landing / auth check redirect |
 | `/auth` | Route | OAuth login (Google / GitHub) |
-| `/onboarding/*` | Route | Setup wizard (first-time only; currently 3 steps, target 8 steps) |
+| `/onboarding/*` | Route | Setup wizard (first-time only; 4 steps) |
 | `/dashboard` | Route | Main cockpit. Renders view tabs based on state: |
 | ↳ `TaskFeed` | Tab State | Main task execution feed & voice recorder |
 | ↳ `History` | Tab State | Expandable logs of past sessions |
-| ↳ `Devices` | Tab State | Paired remote mobile controllers |
-| ↳ `Memory` | Tab State | Extracted user preference facts database |
-| ↳ `Contacts` | Tab State | Secure phone/email contacts list |
 | `*` (404) | Route | Not Found fallback |
 
 ### Global States (all routes)
@@ -34,70 +30,39 @@
 
 ## 2. Onboarding Wizard (First Login)
 
-Setu implements a step-by-step onboarding wizard.
-* **Current Phase:** 3-Step Wizard (Name → Microphone Test → Permissions + EULA → Done).
-* **Target Phase (Step 23):** 8-Step Wizard (adding language selections, live voice previews, phone pairing, screenshot preferences).
+Setu implements a clean 4-step onboarding wizard.
 
 ```mermaid
 graph TD
     A[/auth] -->|OAuth success| B{First login?}
     B -->|No| Z[/dashboard]
     B -->|Yes| C[Step 1: Your Name]
-    C --> D[Step 2: Test Microphone]
-    D --> E[Step 3: Permissions + EULA]
-    E --> Z
+    C --> E[Step 2: Test Microphone]
+    E --> F[Step 3: Permissions + EULA]
+    F --> G[Step 4: Done Screen]
+    G --> Z
     
     style C fill:#8052ff,stroke:#333,stroke-width:2px,color:#fff
-    style D fill:#8052ff,stroke:#333,stroke-width:2px,color:#fff
     style E fill:#8052ff,stroke:#333,stroke-width:2px,color:#fff
+    style F fill:#8052ff,stroke:#333,stroke-width:2px,color:#fff
+    style G fill:#8052ff,stroke:#333,stroke-width:2px,color:#fff
 ```
 
 ### Step-by-Step UI
 
-**Step 1 — `/onboarding/auth`**
-- Clean glassmorphic card: "Continue with Google" + "Continue with GitHub"
-- No password inputs. OAuth only.
-- Error state: inline message under buttons. Buttons stay active.
-
-**Step 2 — `/onboarding/name`**
+**Step 1 — Name Choice**
 - Large heading: *"What should I call you?"*
-- Single text input, floating underline style
-- 1–32 characters. Enter or "Next →" advances.
+- Single text input, floating underline style.
 
-**Step 3 — `/onboarding/language`**
-- Three pill buttons: `[English]` `[Hindi]` `[Auto-detect]`
-- Auto-detect = Faster-Whisper detects language per command
-- Stores to `user.preferences.language`
+**Step 2 — Test Microphone**
+- Live recording test. Energy meter bar reacts to microphone input level using `useAudioAnalyser.js`.
 
-**Step 4 — `/onboarding/voice`**
-- Two large cards: `[♀ Female]` `[♂ Male]`
-- Each card has a "▶ Preview" button that plays a 3-second TTS sample
-- Stores to `user.preferences.tts_voice_gender`
+**Step 3 — Permissions + EULA**
+- Large toggle switch — grants Level 2 permissions (open apps, read/write files, browser control).
+- Scrollable EULA terms text box with a mandatory checkbox to accept.
 
-**Step 5 — `/onboarding/permissions`**
-- Split view:
-  - Left: explains Level 2 capabilities (open apps, read/write files, browser control, screen capture)
-  - Right: large toggle switch — grants L2 permission
-- Scrollable EULA text box below
-- Mandatory checkbox: *"I have read and agree to the EULA and Privacy Policy"*
-- "Finish" button disabled until EULA checked
-
-**Step 6 — `/onboarding/pair`**
-- Shows: 6-digit PIN + QR code
-- Sub-heading: *"Open Setu on your phone and enter this PIN"*
-- Polls `/api/v1/devices/` every 3 seconds — auto-advances when paired
-- "Skip for now" button → can pair later from Settings
-
-**Step 7 — `/onboarding/screenshot`**
-- Heading: *"Should Setu show you what it's doing on your laptop?"*
-- Three options: `[Always]` `[Ask each time]` `[Never]`
-- One-line description under each option
-- Stores to `user.preferences.screenshot_preference`
-
-**Step 8 — `/onboarding/done`**
-- Animated particle burst or ripple animation
-- Text: *"You're all set, [Name]! Say 'Hey Setu' to begin."*
-- Auto-advances to `/dashboard` after 3 seconds
+**Step 4 — Done**
+- Ripple animation indicating setup is complete. Advances to `/dashboard`.
 
 ---
 
@@ -109,7 +74,7 @@ The `/dashboard` is a task-centric workstation, not a chat interface.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ [≡ Setu]     Active: Step 2/4 — Navigating to YouTube   │  ← Active task bar
+│ [≡ Setu]     Active: Playwright Session Running         │  ← Active task bar
 │              [◼ Cancel]                    [📱 Connected]│
 ├────────────┬────────────────────────────────────────────┤
 │ Sidebar    │  Task Feed (main area)                     │
@@ -118,15 +83,15 @@ The `/dashboard` is a task-centric workstation, not a chat interface.
 │            │  │ 🎤 "Open Chrome and go to YouTube"   │  │
 │ Today      │  │ ✅ Opened Chrome                     │  │
 │  Task 1    │  │ ✅ Navigated to youtube.com          │  │
-│  Task 2    │  │ [Screenshot]                         │  │
+│  Task 2    │  │ [Screenshot (optional)]              │  │
 │            │  └─────────────────────────────────────┘  │
 │ Yesterday  │                                            │
 │  Task 3    │  ┌─────────────────────────────────────┐  │
 │            │  │ ⌨️  "What time is it?"               │  │
 │ [Settings] │  │ 🕐 3:27 AM IST                       │  │
-│ [Devices]  │  └─────────────────────────────────────┘  │
-│ [Memory]   │                                            │
-│ [Contacts] │  ──────── Command Input Bar ────────────  │
+│            │  └─────────────────────────────────────┘  │
+│            │                                            │
+│            │  ──────── Command Input Bar ────────────  │
 │            │  [🎤] [ Type a command...          ] [→]  │
 └────────────┴────────────────────────────────────────────┘
 ```
@@ -135,28 +100,10 @@ The `/dashboard` is a task-centric workstation, not a chat interface.
 
 Each completed task is a card in the feed:
 
-- **Header:** Command text (voice or typed) + input source icon
-- **Steps:** Numbered steps with status: ✅ done / 🔄 running / ❌ failed
-- **Screenshot:** Inline image if screenshot was received (click to expand)
-- **Timestamp** + elapsed time in footer
-- **Hover:** "Repeat" button re-runs the command
-
-### Plan Review Card (appears before execution)
-
-When Setu generates a multi-step plan:
-
-```
-┌─────────────────────────────────────┐
-│ 📋 Plan for: "Join my Google Meet"  │
-│                                     │
-│  1. Open Chrome                     │
-│  2. Navigate to Google Calendar     │
-│  3. Find your 3pm meeting           │
-│  4. Click the Join button           │
-│                                     │
-│  [▶ Proceed]         [✕ Cancel]     │
-└─────────────────────────────────────┘
-```
+- **Header:** Command text (voice or typed) + input source icon.
+- **Steps:** Bulleted/numbered steps showing progress.
+- **Timestamp** + elapsed time in footer.
+- **Hover:** "Repeat" button re-runs the command.
 
 ---
 
@@ -168,10 +115,7 @@ stateDiagram-v2
     Idle --> Listening : Wake word / mic click / Alt+Space
     Listening --> Thinking : VAD silence
     Listening --> Idle : Cancel (Esc / tap)
-    Thinking --> PlanReview : COMPLEX task
-    PlanReview --> Executing : User confirms
-    PlanReview --> Idle : User cancels
-    Thinking --> Executing : SIMPLE task (direct)
+    Thinking --> Executing : Simple/Complex task
     Executing --> Speaking : TTS stream begins
     Executing --> Error : Tool failure / timeout
     Speaking --> Listening : Barge-in
@@ -184,7 +128,6 @@ stateDiagram-v2
 | Idle | Default | Hidden | Shown if phone connected |
 | Listening | Glowing mint, waveform | Hidden | Shown |
 | Thinking | "Synthesizing…" pulse | Hidden | Shown |
-| Plan Review | Disabled | Shows plan | Shown |
 | Executing | Disabled | Step progress | Shown |
 | Speaking | Blurred | "Speaking…" | Shown |
 | Error | Default | Error message | Shown |
@@ -195,15 +138,9 @@ stateDiagram-v2
 
 Collapsible (default: open). Toggle: hamburger icon or `Ctrl+B`.
 
-- **[+ New Task]** — Clears current context, starts fresh conversation (confirm if session > 2 turns)
-- **Task History** — Grouped: Today / Yesterday / Previous 7 Days
-  - Empty state: *"Your tasks will appear here."*
-  - Search field at top — filters by keyword (client-side)
-  - Click any task → load into main feed view
-- **[Settings]** — Opens settings modal
-- **[Devices]** — Paired phone list
-- **[Memory]** — View/delete what Setu remembers
-- **[Contacts]** — Manage contacts store
+- **[+ New Task]** — Clears current context, starts fresh conversation.
+- **Task History** — Grouped: Today / Yesterday / Previous 7 Days.
+- **[Settings]** — Opens settings modal.
 
 ---
 
@@ -212,91 +149,36 @@ Collapsible (default: open). Toggle: hamburger icon or `Ctrl+B`.
 Tabbed, glassmorphic modal. Auto-saves on change (debounced 800ms).
 
 ### Tab 1: Account
-- Email, avatar (from OAuth provider), display name
-- **Sign Out** button
-- **Delete Account** — two-step: confirm modal → type "DELETE" → irreversible
+- Email, avatar, display name, and Sign Out button.
 
 ### Tab 2: AI Preferences
-- Language: English / Hindi / Auto-detect
-- Voice gender: Female / Male (preview button)
-- TTS speed slider: 0.75× – 2×
-- Barge-in sensitivity slider
-- Follow-up wait time: 1s – 10s (default 3s)
-- Listening timeout: 5s – 30s (default 15s)
-- **Trust mode** toggle — skips plan confirmation for standard tasks
+- Language: English / Hindi / Auto-detect.
+- Voice gender: Female / Male (with preview button).
+- TTS speed slider: 0.75× – 2×.
+- Barge-in sensitivity slider.
 
-### Tab 3: Permissions
-- Level 2 toggle (open apps, files, browser, screen capture)
-- Screenshot preference: Always / Ask / Never
-- View Command Logs button — paginated audit log
+### Tab 3: Permissions & Tech
+- Level 2 toggle (open apps, files, browser control).
+- Display LAN IP address for phone connection.
 
 ### Tab 4: Appearance
-- Dark / Light / System theme
-- Accent colour picker (6 swatches + custom hex)
-- Reduce Motion toggle (disables NeuralMesh and transitions)
-- Compact Mode toggle
+- Dark / Light / System theme.
+- Accent colour picker.
+- Reduce Motion toggle.
 
 ---
 
-## 7. Devices Screen (`/dashboard/devices`)
+## 7. Phone PWA Client View
 
-- List of paired phones: friendly name, platform, last seen, status (online/offline)
-- **[Pair New Device]** → shows 6-digit PIN + QR
-- **[Revoke]** → removes pairing from MongoDB + Redis
-
----
-
-## 8. Memory Screen (`/dashboard/memory`)
-
-- List of key-value pairs Setu has remembered: e.g., *"preferred_browser: Chrome"*, *"language: Hindi"*
-- Category filter: Preference / App Pattern / Fact / Other
-- **[Delete]** on each item → `DELETE /api/v1/memory/{id}/`
-- **[Clear All]** → confirmation dialog
+When the user opens the dashboard from their phone's web browser:
+- The UI responsively collapses the sidebar.
+- A large mic button takes up the center of the mobile viewport.
+- The user can hold/tap to record voice commands or type them via a text input field.
+- The live task feed is displayed directly below, streaming execution logs in real time.
 
 ---
 
-## 9. Contacts Screen (`/dashboard/contacts`)
-
-- List of contacts with name, relationship, phone, WhatsApp, email
-- **[+ Add Contact]** → inline form
-- **[Edit]** / **[Delete]** per contact
-- *"Setu will ask 'Who is [name]?' when a new name is mentioned — the answer is saved here automatically."*
-
----
-
-## 10. Phone App Screens (React Native)
-
-### Pairing Screen
-- mDNS scan → list discovered Setu laptops
-- Tap device → enter 6-digit PIN → connected
-
-### Main Command Screen
-```
-┌─────────────────────────┐
-│         Setu            │
-│   Connected: My Laptop  │
-│                         │
-│   [Task feed — live]    │
-│                         │
-│   ─────────────────     │
-│   [🎤 Hold to speak]    │
-│   [  Type command...  ] │
-└─────────────────────────┘
-```
-- Hold mic button → recording → release → sends to laptop
-- Typed commands sent on Enter
-- Screenshots appear inline in task feed as received
-- Task step-by-step progress streamed live
-
-### Settings Screen (Phone)
-- Connected device name
-- Language preference
-- Screenshot preference
-- Sign out
-
----
-
-## 11. Keyboard Shortcuts (Laptop Dashboard)
+## 8. Keyboard Shortcuts (Laptop Dashboard)
 
 | Shortcut | Action |
 |---|---|
@@ -311,25 +193,24 @@ Tabbed, glassmorphic modal. Auto-saves on change (debounced 800ms).
 
 ---
 
-## 12. Accessibility
+## 9. Accessibility
 
-- **WCAG 2.1 AA** target across all surfaces
-- **Focus management:** Modals trap focus; route transitions move focus to first interactive element
-- **ARIA labels:** All icon-only buttons (mic, cancel, settings, devices) have `aria-label`
-- **Colour contrast:** Minimum 4.5:1 for all text/background pairs
-- **Reduced Motion:** NeuralMesh, transitions, and waveforms respect `prefers-reduced-motion`
-- **State announcements:** State transitions (Idle → Listening → Speaking) announced via `aria-live="polite"`
-- **Touch targets:** All phone app interactive elements minimum 44×44pt
+- **WCAG 2.1 AA** target across all surfaces.
+- **Focus management:** Modals trap focus; route transitions move focus to first interactive element.
+- **ARIA labels:** All icon-only buttons (mic, cancel, settings) have `aria-label`.
+- **Colour contrast:** Minimum 4.5:1 for all text/background pairs.
+- **Reduced Motion:** NeuralMesh, transitions, and waveforms respect `prefers-reduced-motion`.
+- **State announcements:** State transitions (Idle → Listening → Speaking) announced via `aria-live="polite"`.
 
 ---
 
-## 13. NeuralMesh Background
+## 10. NeuralMesh Background
 
-The `NeuralMesh.tsx` canvas component provides the premium Digital Noir feel:
+The `NeuralMesh.jsx` canvas component provides the premium Digital Noir feel:
 
-- Randomized particle nodes drifting with physics-based velocity
-- Accent colors: `#82F2A8` (mint) and `#3B82F6` (blue)
-- Distance-based connection lines with opacity falloff
-- Mouse/touch cursor attracts nearby nodes
-- Mounted at `App.tsx` root (`z-0`) — shines through all transparent backgrounds
-- Disabled when `reduce_motion = true` in settings
+- Randomized particle nodes drifting with physics-based velocity.
+- Accent colors: `#82F2A8` (mint) and `#3B82F6` (blue).
+- Distance-based connection lines with opacity falloff.
+- Mouse/touch cursor attracts nearby nodes.
+- Mounted at `App.jsx` root (`z-0`) — shines through all transparent backgrounds.
+- Disabled when `reduce_motion = true` in settings.

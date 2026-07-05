@@ -3,7 +3,6 @@ django==6.0.5
 djangorestframework==3.17.1
 djangorestframework-simplejwt==5.5.1
 channels==4.3.2
-# channels-redis>=4.2.0 (Disabled: using InMemoryChannelLayer)
 daphne==4.2.1
 django-cors-headers>=4.3.0
 python-dotenv==1.2.2
@@ -18,9 +17,6 @@ django-allauth>=0.61.0
 pymongo==4.17.0
 mongoengine>=0.28.0
 motor==3.7.1
-# celery==5.6.3 (Disabled: using in-process threading)
-# django-celery-beat==2.8.1 (Disabled: using custom background daemon thread)
-# redis==8.0.0 (Disabled: using in-process memory)
 psutil==7.2.2
 duckduckgo-search==8.1.1
 dateparser==1.2.0
@@ -50,3 +46,6 @@ kokoro==0.9.4
 # Step 13 — OAuth
 google-auth>=2.0.0
 PyGithub>=2.0.0
+
+# Step 18 — Browser Automation
+playwright>=1.40.0

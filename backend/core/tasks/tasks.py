@@ -1,7 +1,7 @@
 """
-Setu Celery Beat — Reminder Scanner Task (Step 13.4)
+Setu Reminder Scanner (Step 13.4)
 
-Runs every 30 seconds (configured in settings.CELERY_BEAT_SCHEDULE).
+Runs every 30 seconds via background daemon thread (core.tasks.apps.py).
 Scans for due reminders and pushes them to the user's active WebSocket session.
 
 Push target: user_{user_id} channel group
@@ -9,7 +9,7 @@ Push target: user_{user_id} channel group
 """
 
 import logging
-from celery import shared_task
+
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from datetime import datetime, timezone
@@ -19,7 +19,6 @@ from .models import Reminder
 logger = logging.getLogger('core.tasks')
 
 
-@shared_task(name='core.tasks.tasks.check_and_fire_reminders')
 def check_and_fire_reminders() -> int:
     """
     Periodic task: scan for due reminders and push them to connected clients.

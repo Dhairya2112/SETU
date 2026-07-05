@@ -1,121 +1,92 @@
-# Setu — Cross-Device Communication Protocol
+# Setu — Simplified Cross-Device Communication Protocol
 
-This document defines the peer-to-peer (P2P) protocol for discovery, pairing, authentication, and execution of remote commands between Setu instances (e.g., Android Phone to Windows/Linux Laptop).
+This document defines the simplified cross-device protocol for connecting phone clients to the laptop server for remote command execution under the Setu MVP.
 
 ---
 
 ## 1. Protocol Architecture & Topology
 
-The cross-device protocol operates over the local area network (LAN) using a hybrid client-server model:
+Setu replaces the complex custom mDNS/ECDH pairing mechanism with a lightweight, browser-standard Progressive Web App (PWA) client connecting directly to the Django Daphne server.
 
--   **Target Device (typically Laptop):** Acts as the **mDNS Responder** and **HTTPS/WSS Server**. It advertises its availability and listens for secure inbound connections.
--   **Initiator Device (typically Phone):** Acts as the **mDNS Scanner** and **Client**. It scans the local network, discovers Target Devices, and initiates pairing/command execution.
+- **Target Device (Laptop):** Acts as the standard HTTP/WS/WSS server. It runs Daphne on the local network (bound to `0.0.0.0:8000`).
+- **Phone (PWA Client):** Runs in the mobile browser by navigating directly to the laptop's LAN IP (e.g., `http://192.168.1.50:5173`). Authentication is performed using the user's existing OAuth/JWT credentials.
 
 ```
 ┌─────────────────────────┐                      ┌─────────────────────────┐
-│     Phone (Client)      │                      │    Laptop (Server)      │
+│       Phone (PWA)       │                      │    Laptop (Server)      │
 └────────────┬────────────┘                      └────────────┬────────────┘
              │                                                │
-             │ 1. Scan Local mDNS Services                    │
-             ├───────────────────────────────────────────────>│ [Advertises _setu-sync._tcp]
+             │ 1. Open mobile browser to Laptop LAN IP        │
+             ├───────────────────────────────────────────────>│ [Daphne serves HTTP/WebSockets]
              │                                                │
-             │ 2. Establish Connection (HTTPS)                │
-             ├───────────────────────────────────────────────>│ [Pairing / ECDH Handshake]
+             │ 2. Authenticate (Google/GitHub or local JWT)   │
+             ├───────────────────────────────────────────────>│ [Verifies credentials & returns JWT]
              │                                                │
-             │ 3. WebSocket Upgrade (Secure Session)          │
-             ├───────────────────────────────────────────────>│ [Listens on secure WebSocket]
+             │ 3. WebSocket Upgrade (ws://laptop_ip:8000/)    │
+             ├───────────────────────────────────────────────>│ [JwtAuthMiddleware validates JWT]
              │                                                │
-             │ 4. Send Encrypted Command Payload              │
-             ├───────────────────────────────────────────────>│ [Decrypts, Sanitizes, Runs]
+             │ 4. Send Command / Live Voice (base64 audio)    │
+             ├───────────────────────────────────────────────>│ [Processes command via LangGraph agent]
              │                                                │
-             │ 5. Stream Real-time Output & TTS Chunk         │
-             │<───────────────────────────────────────────────┤ [Streams logs + audio]
+             │ 5. Stream Real-time Output & TTS Chunks        │
+             │<───────────────────────────────────────────────┤ [Streams logs + audio back to PWA]
              │                                                │
 ```
 
 ---
 
-## 2. Local Discovery (mDNS)
+## 2. Zero-Configuration Local Connection
 
-To avoid hardcoded IP addresses or manual router configuration, Setu uses Multicast DNS (mDNS) for zero-configuration network discovery.
-
--   **Service Type:** `_setu-sync._tcp.local.`
--   **Port:** Dynamically allocated (defaults to `8008` if free).
--   **TXT Records:**
-    -   `device_id`: Unique hash identifying the target machine.
-    -   `friendly_name`: User-facing name (e.g., "Dhaval's Laptop").
-    -   `os`: Target operating system (`windows` / `linux`).
-    -   `pairing_status`: `paired` / `discoverable`.
-
-### Technology Stack
-*   **Python (Backend/Laptop):** `zeroconf` library for registering the service.
-*   **React Native (Mobile/Phone):** `react-native-zeroconf` or `react-native-nsd` for service discovery.
+To connect the phone to the laptop:
+1. The user checks the laptop's current local IP address (displayed on the dashboard, e.g., `192.168.1.50`).
+2. The user enters this IP address on their mobile browser to load the dashboard PWA.
+3. Once loaded, the app can be installed to the phone's home screen as a Progressive Web App (PWA).
 
 ---
 
-## 3. Secure Pairing Handshake
+## 3. Authentication & Security
 
-To prevent unauthorized devices from executing commands on your system, Setu implements a secure pairing flow utilizing **ECDH (Elliptic Curve Diffie-Hellman)** and a **shared validation secret** (QR Code / PIN).
+Rather than inventing a new custom pairing protocol, Setu leverages standard web application security:
 
-### The Handshake Sequence
-
-1.  **Discovery:** Phone finds the Laptop via mDNS and requests pairing.
-2.  **Visual Authentication:**
-    -   Laptop generates a dynamic **6-digit PIN** and a **QR Code** containing its ECDH Public Key ($PK_{laptop}$) and a random pairing challenge (nonce).
-    -   User scans the QR Code or enters the PIN on the Phone.
-3.  **Key Exchange (ECDH):**
-    -   Phone generates its own ECDH Key Pair ($SK_{phone}$, $PK_{phone}$).
-    -   Phone sends $PK_{phone}$ to the Laptop.
-    -   Both devices compute the shared secret $S_{shared} = ECDH(SK, PK)$.
-4.  **Key Derivation:**
-    -   Using Key Derivation Function (HKDF) with the shared secret $S_{shared}$ and the PIN/QR nonce, both devices derive:
-        -   `Session_AES_Key` (256-bit key for encrypting messages).
-        -   `Session_HMAC_Key` (256-bit key for message integrity verification).
-5.  **Mutual Verification:**
-    -   Phone encrypts a test message: `{"challenge": nonce, "device_name": friendly_name}` using the derived key.
-    -   Laptop decrypts, verifies the nonce, registers the Phone's device ID as `PAIRED`, and stores the derived keys in MongoDB (`device_pairings` collection).
+- **JWT Authentication:** The PWA connects to the WebSocket stream at:
+  `ws://<laptop_ip>:8000/ws/stream/<conversation_id>/?token=<jwt_access_token>`
+- **Subnet Verification:** The server verifies that the WebSocket request originates from the local subnet:
+  ```python
+  client_ip = scope['client'][0]
+  # Ensure the connection is from local subnet (e.g., starts with 192.168. or 10.)
+  ```
+- **SSL/TLS (Optional / Staging):** When running in production/staging mode, Daphne is reverse-proxied behind Nginx supporting self-signed certificates or local CA certs to enable HTTPS and secure WebSockets (`wss://`).
 
 ---
 
 ## 4. Message Schema (JSON)
 
-Once paired, all communications occur over a TLS/WSS WebSocket connection using JSON frames encrypted with **AES-256-GCM**.
+Communications use JSON frames sent over standard WebSockets.
 
-### Envelope Structure (Cleartext Wrapper)
+### Input Command Frame (PWA → Laptop)
 ```json
 {
-  "sender_id": "phone_uuid_12345",
-  "recipient_id": "laptop_uuid_67890",
-  "timestamp": 1781234567,
-  "nonce": "unique-random-nonce-per-message",
-  "payload": "<Base64 encoded ciphertext of the actual command payload>",
-  "tag": "<Base64 encoded auth tag from AES-GCM>"
+  "text": "Open Chrome and go to YouTube",
+  "conversation_id": "conv_67890"
 }
 ```
 
-### Decrypted Command Payload
+### Input Audio Frame (PWA → Laptop for voice loop)
 ```json
 {
-  "action": "EXECUTE_COMMAND",
-  "command_type": "shell",
-  "command": "python script.py",
-  "permission_level": "L2",
-  "options": {
-    "stream_output": true,
-    "generate_tts": true,
-    "timeout_seconds": 30
-  }
+  "audio": "<Base64 encoded Web Audio API PCM/WAV chunk>",
+  "conversation_id": "conv_67890"
 }
 ```
 
-### Decrypted Response Payload
+### Server Stream Frame (Laptop → PWA)
 ```json
 {
-  "status": "RUNNING",
-  "stdout_chunk": "Processing line 4...",
-  "stderr_chunk": "",
-  "tts_audio_chunk": "<Base64 encoded Kokoro TTS audio chunk>",
-  "is_finished": false
+  "role": "agent",
+  "text": "Opening browser...",
+  "chunk_type": "text",
+  "audio": "<Base64 encoded Kokoro TTS audio chunk>",
+  "status": "thinking"
 }
 ```
 
@@ -123,20 +94,13 @@ Once paired, all communications occur over a TLS/WSS WebSocket connection using 
 
 ## 5. Security & Prevention Measures
 
-Because remote code execution is highly sensitive, the protocol enforces several layers of security:
-
-### Replay Attack Prevention
-*   Every message includes a `timestamp` and a unique `nonce`.
-*   The target device checks that the timestamp is within $\pm 5$ seconds of local system time.
-*   The target device tracks used nonces in Redis (with a 10-second TTL). Repeated nonces are silently dropped.
-
 ### Command Execution Sandboxing
-*   Remote commands are subjected to the exact same safety engine in `safety.py` (checking the command blacklist and locking down path access to the home directory).
-*   Any L3 level actions (installing software, editing system files) will **block** and raise a native prompt on the target machine's screen. The initiating device will receive a `WAITING_FOR_USER_CONSENT` state frame.
+* Remote commands are subjected to the exact same safety engine in `safety.py` (checking the command blacklist and locking down path access to the home directory).
+* Any L3 actions (installing software, editing system files) will raise a native UAC prompt on the laptop screen, requiring manual confirmation.
 
 ### Network Isolation
-*   By default, the server socket bound by Daphne/Channels only listens on local interfaces. 
-*   Connections from external networks (outside the local subnet mask) are blocked at the application level.
+* Django Daphne binds to `0.0.0.0` for local LAN communication.
+* External public-internet access is blocked; Setu does not implement cloud relay endpoints.
 
 ---
 
@@ -147,33 +111,21 @@ Because remote code execution is highly sensitive, the protocol enforces several
      │  DISCONNECTED│
      └──────┬───────┘
             │
-            │  mDNS Discover
+            │  Open browser to LAN IP
             ▼
      ┌──────────────┐
-     │  DISCOVERED  │
+     │  CONNECTED   │
      └──────┬───────┘
             │
-            │  Initiate Pairing / PIN Entry
+            │  JWT Validation Success
             ▼
-     ┌──────────────┐          Pairing Fail
-     │   PAIRING    ├───────────────────────┐
-     └──────┬───────┘                       │
-            │                               │
-            │  ECDH Handshake Success       │
-            ▼                               │
-     ┌──────────────┐                       │
-     │    PAIRED    │                       │
-     └──────┬───────┘                       │
-            │                               │
-            │  Establish TLS WebSocket      │
-            ▼                               │
-     ┌──────────────┐                       │
-     │  AUTHORIZED  │                       │
-     └──────┬───────┘                       │
-            │                               │
-            │  Session Terminated / Error   │
-            ▼                               ▼
-     ┌──────────────┐               ┌──────────────┐
-     │  DISCONNECTING ─────────────>│    ERROR     │
-     └──────────────┘               └──────────────┘
+     ┌──────────────┐
+     │  AUTHORIZED  │ (WebSocket active)
+     └──────┬───────┘
+            │
+            │  PWA closes / browser backgrounded
+            ▼
+     ┌──────────────┐
+     │  DISCONNECTED│
+     └──────────────┘
 ```

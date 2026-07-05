@@ -1,7 +1,7 @@
 """
-Setu Celery Tasks — Agent Command Processing (Step 8.5 + Step 14.6)
+Setu Agent Command Processing (Step 8.5 + Step 14.6)
 
-This module contains the Celery task that:
+This module contains the main command processing function that:
   1. Checks Tier 0 fast-path for instant responses (Step 14.6)
   2. Runs the LLM agent on complex commands
   3. Streams the response word-by-word to the WebSocket channel
@@ -10,13 +10,13 @@ This module contains the Celery task that:
 
 The agent, TTS engine, fast router, and TTS cache are initialized once at
 module level (singleton pattern) to avoid reloading heavy models on every
-task execution.
+function call.
 """
 
 import time
 import logging
 
-from celery import shared_task
+
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from datetime import datetime, timezone
@@ -29,7 +29,7 @@ from core.conversations.models import Conversation, Message, MessageMetadata
 
 logger = logging.getLogger('core.agent')
 
-# ── Module-level singletons — loaded once per Celery worker process ───────
+# ── Module-level singletons — loaded once per process ─────────────────────
 agent_instance = SetuAgent()
 tts_engine     = TTSEngine()
 fast_router    = FastResponseRouter()
@@ -116,7 +116,6 @@ def _persist_conversation(
         logger.error("Failed to save conversation %s to MongoDB: %s", conversation_id, e)
 
 
-@shared_task
 def process_agent_command(text: str, conversation_id: str, user_id: str) -> bool:
     """
     Process a user command through the Setu agent pipeline.

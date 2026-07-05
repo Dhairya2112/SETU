@@ -1,20 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-interface AgentSocketOptions {
-  token: string | null;
-  conversationId: string;
-  onReminderFired?: (reminder: { id: string; title: string; body: string }) => void;
-}
-
-export function useAgentSocket({ token, conversationId, onReminderFired }: AgentSocketOptions) {
+export function useAgentSocket({ token, conversationId, onReminderFired }) {
     const [isConnected, setIsConnected] = useState(false);
-    const [messages, setMessages] = useState<{role: 'user' | 'agent', text: string}[]>([]);
+    const [messages, setMessages] = useState([]);
     const [isThinking, setIsThinking] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
     
-    const socketRef = useRef<WebSocket | null>(null);
-    const currentAudioRef = useRef<HTMLAudioElement | null>(null);
-    const isStreamingRef = useRef<boolean>(false); // true while receiving a new agent response
+    const socketRef = useRef(null);
+    const currentAudioRef = useRef(null);
+    const isStreamingRef = useRef(false); // true while receiving a new agent response
 
     const onReminderFiredRef = useRef(onReminderFired);
     useEffect(() => {
@@ -33,7 +27,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }: Agent
     useEffect(() => {
       if (!token || !conversationId) return;
 
-      fetch(`http://localhost:8000/api/v1/conversations/${conversationId}/`, {
+      fetch(`http://${window.location.hostname}:8000/api/v1/conversations/${conversationId}/`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => {
@@ -42,8 +36,8 @@ export function useAgentSocket({ token, conversationId, onReminderFired }: Agent
         })
         .then(data => {
           if (data && data.messages && data.messages.length > 0) {
-            const restored = data.messages.map((msg: any) => ({
-              role: msg.role === 'user' ? 'user' as const : 'agent' as const,
+            const restored = data.messages.map((msg) => ({
+              role: msg.role === 'user' ? 'user' : 'agent',
               text: msg.content
             }));
             setMessages(restored);
@@ -55,7 +49,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }: Agent
     useEffect(() => {
       if (!token || !conversationId) return;
 
-      let reconnectTimeoutId: NodeJS.Timeout;
+      let reconnectTimeoutId;
       let reconnectAttempts = 0;
       const maxReconnectAttempts = 5;
       let isManualCleanup = false;
@@ -63,7 +57,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }: Agent
       const connect = () => {
         if (isManualCleanup) return;
         
-        const wsUrl = `ws://localhost:8000/ws/stream/${conversationId}/?token=${token}`;
+        const wsUrl = `ws://${window.location.hostname}:8000/ws/stream/${conversationId}/?token=${token}`;
         console.log(`Attempting WebSocket connection... (Attempt ${reconnectAttempts + 1})`);
         const ws = new WebSocket(wsUrl);
         socketRef.current = ws;
@@ -119,7 +113,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }: Agent
               });
           } else if (data.chunk_type === 'reminder') {
               // Acknowledge the reminder by deleting/completing it on the backend
-              fetch(`http://localhost:8000/api/v1/reminders/${data.reminder_id}/`, {
+              fetch(`http://${window.location.hostname}:8000/api/v1/reminders/${data.reminder_id}/`, {
                   method: 'DELETE',
                   headers: {
                       'Authorization': `Bearer ${token}`
@@ -193,7 +187,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }: Agent
       };
     }, [token, conversationId]);
 
-  const sendCommand = useCallback((text: string) => {
+  const sendCommand = useCallback((text) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       // Optimistically add user message
       setMessages(prev => [...prev, { role: 'user', text }]);

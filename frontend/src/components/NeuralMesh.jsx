@@ -1,9 +1,7 @@
 import { useEffect, useRef } from 'react';
 
-type ShapeType = 'circle' | 'triangle' | 'diamond' | 'square';
-
 export const NeuralMesh = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRef = useRef(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -11,7 +9,7 @@ export const NeuralMesh = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let particles: Particle[] = [];
+    let particles = [];
     // Increase count to feel like a rich constellation/cosmos (e.g. 150 particles)
     const particleCount = Math.min(180, Math.floor(window.innerWidth / 8));
     const connectionDistance = 120;
@@ -19,26 +17,15 @@ export const NeuralMesh = () => {
 
     const mouse = { x: -1000, y: -1000 };
     let time = 0;
-    let animationFrameId: number;
+    let animationFrameId;
 
     // Single centered slowly drifting soft violet pulse representing Plum Voltage authority glow
     const pulseCloud = { x: 0.5, y: 0.5, vx: 0.00005, vy: -0.00005, r: 0.45, alpha: 0.05 };
 
     class Particle {
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      radius: number;
-      baseRadius: number;
-      pulseSpeed: number;
-      color: string;
-      alpha: number;
-      shape: ShapeType;
-
       constructor() {
-        this.x = Math.random() * canvas!.width;
-        this.y = Math.random() * canvas!.height;
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
         this.vx = (Math.random() - 0.5) * 0.15; // Slow drift
         this.vy = (Math.random() - 0.5) * 0.15;
         this.baseRadius = Math.random() * 2 + 1; // Size scale 2px - 6px diameter (1px - 3px radius)
@@ -81,10 +68,10 @@ export const NeuralMesh = () => {
         this.y += this.vy;
 
         // Wrap around borders for infinite loop look
-        if (this.x < 0) this.x = canvas!.width;
-        if (this.x > canvas!.width) this.x = 0;
-        if (this.y < 0) this.y = canvas!.height;
-        if (this.y > canvas!.height) this.y = 0;
+        if (this.x < 0) this.x = canvas.width;
+        if (this.x > canvas.width) this.x = 0;
+        if (this.y < 0) this.y = canvas.height;
+        if (this.y > canvas.height) this.y = 0;
 
         // Gentle breath animation
         this.radius = this.baseRadius + Math.sin(time * this.pulseSpeed * 4) * 0.4;
@@ -223,7 +210,7 @@ export const NeuralMesh = () => {
       animationFrameId = requestAnimationFrame(animate);
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handleMouseMove = (e) => {
       const rect = canvas.getBoundingClientRect();
       mouse.x = e.clientX - rect.left;
       mouse.y = e.clientY - rect.top;

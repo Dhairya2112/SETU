@@ -12,9 +12,6 @@ erDiagram
     USERS ||--o{ CONVERSATIONS : "starts"
     USERS ||--o{ COMMAND_LOGS : "generates"
     USERS ||--o{ REFRESH_TOKENS : "has"
-    USERS ||--o{ USER_MEMORY : "owns"
-    USERS ||--o{ CONTACTS : "owns"
-    USERS ||--o{ DEVICE_PAIRINGS : "pairs"
     USERS ||--o{ REMINDERS : "owns"
     CONVERSATIONS ||--o{ MESSAGES : "contains"
 ```
@@ -136,74 +133,14 @@ Indexes: `{ "token_hash": 1 }` unique, `{ "expires_at": 1 }` TTL 0s (auto-delete
 
 ---
 
-### 2.5 `device_pairings` ⬜ Step 17
+### 2.5 `device_pairings` 🚫 SKIP (MVP)
+*Skipped for MVP. Replaced by direct PWA client WebSocket connection using standard JWT authorization.*
 
-Tracks phone→laptop pairing for cross-device execution.
+### 2.6 `user_memory` 🚫 SKIP (MVP)
+*Skipped for MVP. Direct prompt context formatting is used instead of persistent memory storage.*
 
-```json
-{
-  "_id": "ObjectId",
-  "pairing_id": "uuid4-string",
-  "user_id": "uuid4-string",
-  "laptop_device_id": "string",
-  "phone_device_id": "string",
-  "laptop_friendly_name": "string",
-  "phone_friendly_name": "string",
-  "paired_at": "ISODate",
-  "last_seen": "ISODate",
-  "status": "paired | revoked",
-  "session_key_hash": "string (HMAC of AES session key — never store raw)",
-  "laptop_ip": "string (LAN IP, updated on each connection)"
-}
-```
-
-Indexes: `{ "user_id": 1, "status": 1 }` compound, `{ "phone_device_id": 1 }`
-
----
-
-### 2.6 `user_memory` ⬜ Step 22
-
-Persistent facts injected into system prompt before each LLM call.
-
-```json
-{
-  "_id": "ObjectId",
-  "memory_id": "uuid4-string",
-  "user_id": "uuid4-string",
-  "key": "string (e.g. 'preferred_browser', 'default_language')",
-  "value": "string",
-  "category": "preference | app_pattern | fact | other",
-  "created_at": "ISODate",
-  "updated_at": "ISODate",
-  "access_count": "integer"
-}
-```
-
-Indexes: `{ "user_id": 1, "key": 1 }` unique compound, `{ "user_id": 1, "category": 1 }`
-
----
-
-### 2.7 `contacts` ⬜ Step 22
-
-Enables "Message Rahul" and "Email mom" commands.
-
-```json
-{
-  "_id": "ObjectId",
-  "contact_id": "uuid4-string",
-  "user_id": "uuid4-string",
-  "name": "string",
-  "aliases": ["array of alternate names / nicknames"],
-  "phone": "string | null",
-  "email": "string | null",
-  "whatsapp": "string | null",
-  "relationship": "friend | family | colleague | other",
-  "notes": "string | null",
-  "created_at": "ISODate"
-}
-```
-
-Indexes: `{ "user_id": 1, "name": 1 }` compound, `{ "user_id": 1 }`
+### 2.7 `contacts` 🚫 SKIP (MVP)
+*Skipped for MVP.*
 
 ---
 
@@ -240,9 +177,8 @@ Indexes: `{ "user_id": 1, "trigger_at": 1 }` compound, `{ "trigger_at": 1, "is_c
 | `command_logs` | `{ "executed_at": 1 }` | TTL 90 days |
 | `refresh_tokens` | `{ "token_hash": 1 }` | Unique |
 | `refresh_tokens` | `{ "expires_at": 1 }` | TTL 0s |
-| `device_pairings` | `{ "user_id": 1, "status": 1 }` | Compound |
-| `device_pairings` | `{ "phone_device_id": 1 }` | — |
-| `user_memory` | `{ "user_id": 1, "key": 1 }` | Unique compound |
-| `contacts` | `{ "user_id": 1, "name": 1 }` | Compound |
+| `device_pairings` | — | 🚫 SKIP (MVP) |
+| `user_memory` | — | 🚫 SKIP (MVP) |
+| `contacts` | — | 🚫 SKIP (MVP) |
 | `reminders` | `{ "user_id": 1, "trigger_at": 1 }` | Compound |
 | `reminders` | `{ "trigger_at": 1, "is_completed": 1 }` | Compound |

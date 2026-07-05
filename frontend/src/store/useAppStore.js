@@ -1,27 +1,24 @@
 import { create } from 'zustand';
 
-interface AppState {
-  token: string | null;
-  refreshToken: string | null;
-  username: string;
-  conversationId: string;
-  eulaAccepted: boolean;
-  onboardingCompleted: boolean;
-  setToken: (token: string | null) => void;
-  setRefreshToken: (token: string | null) => void;
-  setUsername: (username: string) => void;
-  setConversationId: (id: string) => void;
-  setEulaAccepted: (accepted: boolean) => void;
-  setOnboardingCompleted: (completed: boolean) => void;
-  logout: () => void;
-}
 
-export const useAppStore = create<AppState>((set) => ({
+
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
+export const useAppStore = create((set) => ({
   token: localStorage.getItem('setu_token'),
   refreshToken: localStorage.getItem('setu_refresh_token'),
   username: localStorage.getItem('setu_preferred_name') || 'Agent',
   conversationId: localStorage.getItem('setu_conversation_id') || (() => {
-    const id = crypto.randomUUID();
+    const id = generateUUID();
     localStorage.setItem('setu_conversation_id', id);
     return id;
   })(),
@@ -66,7 +63,7 @@ export const useAppStore = create<AppState>((set) => ({
     localStorage.removeItem('setu_conversation_id');
     localStorage.removeItem('setu_onboarding_completed');
     localStorage.removeItem('setu_eula_accepted');
-    const newId = crypto.randomUUID();
+    const newId = generateUUID();
     localStorage.setItem('setu_conversation_id', newId);
     set({
       token: null,

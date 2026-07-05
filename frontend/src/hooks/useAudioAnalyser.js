@@ -2,15 +2,15 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 
 export function useAudioAnalyser() {
   const [isActive, setIsActive] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const dataArrayRef = useRef<Uint8Array | null>(null);
-  const speechRecognitionRef = useRef<any>(null);
+  const [error, setError] = useState(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const streamRef = useRef(null);
+  const dataArrayRef = useRef(null);
+  const speechRecognitionRef = useRef(null);
   const smoothedEnergyRef = useRef(0.0);
 
-  const startListening = useCallback(async (onTranscript?: (text: string) => void) => {
+  const startListening = useCallback(async (onTranscript) => {
     setError(null);
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -18,14 +18,14 @@ export function useAudioAnalyser() {
       }
 
       // Initialize Speech Recognition if available
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
         recognition.continuous = false;
         recognition.interimResults = false;
         recognition.lang = 'en-US';
 
-        recognition.onresult = (event: any) => {
+        recognition.onresult = (event) => {
           let transcript = event.results[0][0].transcript;
           
           // Phonetic correction for misheard "Setu" wake word variations (Google/browser STT limits)
@@ -52,7 +52,7 @@ export function useAudioAnalyser() {
           }
         };
 
-        recognition.onerror = (event: any) => {
+        recognition.onerror = (event) => {
           console.warn('Speech recognition error', event.error);
         };
 
@@ -70,7 +70,7 @@ export function useAudioAnalyser() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       streamRef.current = stream;
 
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       const ctx = new AudioContextClass();
       audioContextRef.current = ctx;
 
@@ -94,7 +94,7 @@ export function useAudioAnalyser() {
       analyserRef.current = analyser;
       dataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
       setIsActive(true);
-    } catch (err: any) {
+    } catch (err) {
       console.warn('Microphone configuration error:', err);
       setError(err.message || 'Microphone activation blocked.');
       setIsActive(false);
@@ -125,7 +125,7 @@ export function useAudioAnalyser() {
 
     const analyser = analyserRef.current;
     const buffer = dataArrayRef.current;
-    analyser.getByteFrequencyData(buffer as any);
+    analyser.getByteFrequencyData(buffer);
 
     // Focus analysis tightly on the vocal range: 250Hz - 2000Hz (bins 6 to 48)
     const vocalRange = buffer.slice(6, 48);
@@ -145,7 +145,7 @@ export function useAudioAnalyser() {
    * @param sensitivityThreshold - Derived from Settings Slider (0.0 - 1.0)
    * @param onBargeIn - Callback to execute on interruption
    */
-  const monitorBargeIn = useCallback((sensitivityThreshold: number, onBargeIn: () => void) => {
+  const monitorBargeIn = useCallback((sensitivityThreshold, onBargeIn) => {
     if (!analyserRef.current) return;
     const currentVolume = getNormalizedEnergy();
     

@@ -18,7 +18,7 @@ logger = logging.getLogger('core.agent')
 class TTSCache:
     """
     In-memory cache for pre-generated TTS audio (base64 WAV strings).
-    Thread-safe via a lock (safe for Celery workers regardless of pool type).
+    Thread-safe via a lock (safe for concurrent background threads).
 
     Usage:
         cache = TTSCache()

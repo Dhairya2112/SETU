@@ -7,25 +7,25 @@ import { useAppStore } from '../store/useAppStore';
 export function Dashboard() {
   const navigate = useNavigate();
   const { token, conversationId, setUsername, logout } = useAppStore();
-  const [activeTab, setActiveTab] = useState<string>('TaskFeed');
+  const [activeTab, setActiveTab] = useState('TaskFeed');
 
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef(null);
 
   // Reminders State
-  const [toasts, setToasts] = useState<{ id: string, title: string, body: string }[]>([]);
+  const [toasts, setToasts] = useState([]);
 
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [newWhitelistPath, setNewWhitelistPath] = useState('');
-  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+  const [expandedSessionId, setExpandedSessionId] = useState(null);
   const [showTaskStream, setShowTaskStream] = useState(false);
 
   const { messages, isThinking, isSpeaking, sendCommand, stopSpeaking } = useAgentSocket({
     token,
     conversationId,
-    onReminderFired: (reminder: any) => {
+    onReminderFired: (reminder) => {
       try {
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const playBeep = (freq: number, duration: number, startTime: number) => {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const playBeep = (freq, duration, startTime) => {
           const osc = audioCtx.createOscillator();
           const gain = audioCtx.createGain();
           osc.connect(gain);
@@ -72,7 +72,7 @@ export function Dashboard() {
       navigate('/onboarding/name');
       return;
     }
-    fetch('http://localhost:8000/api/v1/user/profile/', {
+    fetch(`http://${window.location.hostname}:8000/api/v1/user/profile/`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => {
@@ -90,7 +90,7 @@ export function Dashboard() {
 
   // Poll audio level when listening
   useEffect(() => {
-    let animationFrameId: number;
+    let animationFrameId;
 
     const updateAudioLevel = () => {
       if (isActive) {
@@ -112,7 +112,7 @@ export function Dashboard() {
 
   // Implement Barge-in
   useEffect(() => {
-    let bargeInFrameId: number;
+    let bargeInFrameId;
 
     const checkBargeIn = () => {
       if (isSpeaking) {
@@ -197,8 +197,8 @@ export function Dashboard() {
     }
   ];
 
-  const [history, setHistory] = useState<any[]>([]);
-  const [profile, setProfile] = useState<any>({
+  const [history, setHistory] = useState([]);
+  const [profile, setProfile] = useState({
     username: 'daved',
     email: 'daved@setu.local',
     user_id: 'usr_01j1wg5c82feae15ab00',
@@ -214,7 +214,7 @@ export function Dashboard() {
   // Load history
   useEffect(() => {
     if (activeTab === 'History' && token) {
-      fetch('http://localhost:8000/api/v1/conversations/', {
+      fetch(`http://${window.location.hostname}:8000/api/v1/conversations/`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -230,7 +230,7 @@ export function Dashboard() {
   // Load profile
   useEffect(() => {
     if ((activeTab === 'Memory' || activeTab === 'Settings') && token) {
-      fetch('http://localhost:8000/api/v1/user/profile/', {
+      fetch(`http://${window.location.hostname}:8000/api/v1/user/profile/`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -244,7 +244,7 @@ export function Dashboard() {
   // Load audit logs
   useEffect(() => {
     if (activeTab === 'Settings' && token) {
-      fetch('http://localhost:8000/api/v1/agent/audit-logs/', {
+      fetch(`http://${window.location.hostname}:8000/api/v1/agent/audit-logs/`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())
@@ -257,13 +257,13 @@ export function Dashboard() {
     }
   }, [activeTab, token]);
 
-  const updatePreference = (key: string, value: any) => {
+  const updatePreference = (key, value) => {
     if (!token) return;
     const updatedPreferences = {
       ...profile?.preferences,
       [key]: value
     };
-    fetch('http://localhost:8000/api/v1/user/profile/', {
+    fetch(`http://${window.location.hostname}:8000/api/v1/user/profile/`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -287,17 +287,17 @@ export function Dashboard() {
     setNewWhitelistPath('');
   };
 
-  const handleRemoveWhitelistPath = (pathToRemove: string) => {
+  const handleRemoveWhitelistPath = (pathToRemove) => {
     const currentPaths = profile?.preferences?.whitelisted_paths || [];
-    const updatedPaths = currentPaths.filter((p: string) => p !== pathToRemove);
+    const updatedPaths = currentPaths.filter((p) => p !== pathToRemove);
     updatePreference('whitelisted_paths', updatedPaths);
   };
 
   const getTasksFromMessages = () => {
-    const tasks: any[] = [];
-    let currentTask: any = null;
+    const tasks = [];
+    let currentTask = null;
 
-    messages.forEach((msg: any, index: number) => {
+    messages.forEach((msg, index) => {
       if (msg.role === 'user') {
         if (currentTask) {
           tasks.push(currentTask);
@@ -313,7 +313,7 @@ export function Dashboard() {
         currentTask.steps = [];
         currentTask.result = '';
         const lines = msg.text.split('\n');
-        lines.forEach((line: string) => {
+        lines.forEach((line) => {
           if (line.trim().startsWith('-') || line.trim().startsWith('*') || line.trim().match(/^\d+\./)) {
             currentTask.steps.push({ text: line.replace(/^[-*\d.\s]+/, '').trim(), status: 'completed' });
           } else {
@@ -681,7 +681,7 @@ export function Dashboard() {
                             {task.steps.length > 0 ? (
                               <div className="border-t border-white/5 pt-3.5 space-y-2">
                                 <span className="text-[9px] font-mono text-zinc-500 block mb-1.5">EXECUTION TRACE</span>
-                                {task.steps.map((step: any, idx: number) => (
+                                {task.steps.map((step, idx) => (
                                   <div key={idx} className="flex items-center gap-2.5 text-[11px] font-sans">
                                     <span className="w-1.5 h-1.5 rounded-full bg-[#8052ff] shrink-0" />
                                     <span className="text-zinc-400">{step.text}</span>
@@ -801,7 +801,7 @@ export function Dashboard() {
                     {history.length === 0 ? (
                       <p className="text-zinc-500 text-sm">No history found.</p>
                     ) : (history.map((conv, i) => {
-                      const firstUserMsg = conv.messages?.find((m: any) => m.role === 'user');
+                      const firstUserMsg = conv.messages?.find((m) => m.role === 'user');
                       const isExpanded = expandedSessionId === conv.conversation_id;
 
                       return (
@@ -817,7 +817,7 @@ export function Dashboard() {
                               </div>
                               <div className="min-w-0">
                                 <h3 className="text-base font-bold text-white mb-1 truncate pr-2 group-hover:text-[#8052ff] transition-colors font-display">
-                                  {firstUserMsg ? (firstUserMsg.content.length > 70 ? firstUserMsg.content.substring(0, 70) + '...' : firstUserMsg.content) : `Session ${conv.conversation_id.substring(0, 8)}`}
+                                  {firstUserMsg ? (firstUserMsg.content.length > 70 ? firstUserMsg.content.substring(0, 70) + '...' : firstUserMsg.content) : `Session ${(conv.conversation_id || '').substring(0, 8) || 'New'}`}
                                 </h3>
                                 <p className="text-[10px] text-zinc-500 font-mono">
                                   {conv.started_at ? new Date(conv.started_at).toLocaleString() : 'Recent'}
@@ -843,7 +843,7 @@ export function Dashboard() {
                               <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest block mb-2">Conversation Log</span>
                               {conv.messages && conv.messages.length > 0 ? (
                                 <div className="space-y-4 font-sans">
-                                  {conv.messages.map((msg: any, mIdx: number) => {
+                                  {conv.messages.map((msg, mIdx) => {
                                     const isUser = msg.role === 'user';
                                     return (
                                       <div key={msg.message_id || mIdx} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
@@ -1234,7 +1234,7 @@ export function Dashboard() {
                             {(profile?.preferences?.whitelisted_paths || []).length === 0 ? (
                               <p className="text-xs text-zinc-500 italic">No whitelisted folders. Defaulting to home directory.</p>
                             ) : (
-                              (profile?.preferences?.whitelisted_paths || []).map((path: string, idx: number) => (
+                              (profile?.preferences?.whitelisted_paths || []).map((path, idx) => (
                                 <div key={idx} className="flex justify-between items-center bg-white/5 border border-white/5 rounded-xl p-2.5 text-xs text-zinc-300">
                                   <span className="truncate max-w-[80%] font-mono">{path}</span>
                                   <button
@@ -1262,7 +1262,7 @@ export function Dashboard() {
                       <button
                         onClick={() => {
                           if (token) {
-                            fetch('http://localhost:8000/api/v1/agent/audit-logs/', {
+                            fetch(`http://${window.location.hostname}:8000/api/v1/agent/audit-logs/`, {
                               headers: { 'Authorization': `Bearer ${token}` }
                             })
                               .then(res => res.json())
@@ -1294,7 +1294,7 @@ export function Dashboard() {
                               <td colSpan={4} className="py-4 text-center text-zinc-500 italic">No activity logged yet.</td>
                             </tr>
                           ) : (
-                            auditLogs.map((log: any) => {
+                            auditLogs.map((log) => {
                               let statusColor = "text-green-400";
                               if (log.status === "BLOCKED" || log.status === "DENIED") statusColor = "text-red-400";
                               else if (log.status === "ERROR") statusColor = "text-amber-500";

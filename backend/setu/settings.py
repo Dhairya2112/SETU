@@ -26,7 +26,7 @@ SECRET_KEY = os.environ.get(
     'django-insecure-o=go3%4sss1rr$jaw9rmp11xrj)xw!&mn)1^7gl0pp9ak3%krw'
 )
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
-ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,*').split(',')
 
 
 # ── Installed Applications ────────────────────────────────────────────────
@@ -102,7 +102,7 @@ TEMPLATES = [
 
 
 # ── Databases ─────────────────────────────────────────────────────────────
-# SQLite is used ONLY for django-celery-beat scheduler tables.
+# SQLite is used for Django's internal tables (admin, auth, sessions, sites).
 # All Setu application data lives in MongoDB (via MongoEngine).
 DATABASES = {
     'default': {

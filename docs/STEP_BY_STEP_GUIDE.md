@@ -94,33 +94,33 @@ Additionally, the deep codebase audit and UI bugs identified on June 22, 2026 ar
 ### Step 8: REST Endpoints ✅
 - All core endpoints implemented (see `AI_CONTEXT.md` API Reference)
 
-### Step 8.5: WebSockets & Celery ✅
+### Step 8.5: WebSockets & Background Streams ✅
 - `backend/setu/asgi.py` — `ProtocolTypeRouter` separates HTTP and WS
 - `JwtAuthMiddleware` — validates token from query param before accepting WS
 - `AgentStreamConsumer` — joins `chat_{conversation_id}` channel group
-- `process_agent_command` Celery task — streams word-by-word, generates TTS base64
-- Channel Layer + Celery Broker: Redis `127.0.0.1:6379`
+- `process_agent_command` background task thread — streams word-by-word, generates TTS base64
+- Channel Layer: In-memory Channel Layer (Celery & Redis removed for simplification)
 
 ---
 
 ## PHASE 3: Desktop Dashboard & Frontend ✅ COMPLETED
 
 ### Step 9: React Frontend Setup ✅
-- React 18 + Vite + TypeScript + TailwindCSS
-- `App.tsx` — routes `/`, `/auth`, `/onboarding/*`, `/dashboard/*`
-- `NeuralMesh.tsx` — canvas-based physics particle background
-- `Login.tsx` — glassmorphic card wired to `/api/v1/auth/login/`
+- React 18 + Vite + JavaScript + TailwindCSS (TypeScript migrated to pure JS)
+- `App.jsx` — routes `/`, `/auth`, `/onboarding/*`, `/dashboard/*`
+- `NeuralMesh.jsx` — canvas-based physics particle background
+- `Login.jsx` — glassmorphic card wired to `/api/v1/auth/login/`
 
 ### Step 10: Onboarding UI ✅
 - **File:** `frontend/src/pages/Onboarding.tsx`
 - 4-step wizard: Name → Mic Test → Permissions + EULA → Done
 - Framer Motion transitions between steps ✅
-- ⚠️ **Note:** Must be expanded to 8 steps in Step 23
+- 🚫 **Note:** 8-step expansion skipped for simplified MVP (kept 4-step wizard)
 
 ### Step 11: Connect UI to Backend ✅
 - All B3–B8 bugs fixed
-- Zustand store `useAppStore.ts` with token, username, conversationId, eulaAccepted
-- TanStack React Query `QueryClientProvider` wrapping `main.tsx`
+- Zustand store `useAppStore.js` with token, username, conversationId, eulaAccepted
+- React Query removed to fix build break; using native fetch / React state wrapping `main.jsx`
 
 ### Step 12: OS-Level Tool Registration & Agent Intelligence ✅
 - **File:** `backend/core/agent/tools.py`
@@ -149,13 +149,16 @@ Replace chat-centric UI with task dashboard layout.
 
 ## PHASE 4: Setu MVP Sprint 🔴 DEADLINE: JULY 20, 2026
 
-> This phase is broken down into logical sub-phases (milestones). Commit and push to GitHub when each sub-phase is completed.
+> This phase has been simplified into 4 targeted milestones:
+> - **Phase 0:** TS to JS clean up ✅ (Completed)
+> - **Phase A:** Playwright Browser Automation (Days 2-4) ➡️ (Next)
+> - **Phase B:** Phone PWA + Voice (Days 5-7) ⬜
+> - **Phase C:** Polish & Demo (Days 8-10+) ⬜
 
 ---
 
-### PHASE 4A: Identity, Voices & Reminders (Milestone 1)
+### PHASE 4A: Identity, Voices & Reminders (Milestone 1) - COMPLETED
 *Goal: Secure user authentication, Hindi/English STT/TTS setup, and reminder scheduling.*
-*Git Action: Commit and push to GitHub upon completing Step 14.*
 
 ---
 
@@ -225,8 +228,8 @@ path('api/v1/auth/github/', GitHubOAuthView.as_view()),
 **Files:** `backend/core/tasks/views.py`, `backend/core/tasks/serializers.py`, `backend/core/agent/tools.py`
 - Create `ReminderSerializer` and CRUD views for `Reminder` MongoEngine model.
 - `@tool` `set_reminder` registered and parses time string using `dateparser.parse()`.
-- Celery Beat scans `check_reminders` every 30s and streams `chunk_type: "reminder"` to user via channels.
-- Frontend reminders widget fully integrated with active listing/deletion in `Dashboard.tsx`.
+- Daemon thread scheduler scans `check_reminders` every 30s and streams `chunk_type: "reminder"` to user via channels.
+- Frontend reminders widget fully integrated with active listing/deletion in `Dashboard.jsx`.
 
 ---
 
@@ -247,7 +250,7 @@ path('api/v1/auth/github/', GitHubOAuthView.as_view()),
   - English Male: `KPipeline(lang_code='a')`, voice `am_echo`
   - Hindi Female: `KPipeline(lang_code='h')`, voice `hf_alpha`
   - Hindi Male: `KPipeline(lang_code='h')`, voice `hm_omega`
-- Celery `process_agent_command` reads `user.preferences.language` and `tts_voice_gender` before calling `generate_base64()`.
+- Background thread `process_agent_command` reads `user.preferences.language` and `tts_voice_gender` before calling `generate_base64()`.
 
 #### 14.3: Real Token Streaming (WebSocket) ✅
 - **File:** `backend/core/agent/tasks.py`
@@ -271,11 +274,11 @@ path('api/v1/auth/github/', GitHubOAuthView.as_view()),
 #### 14.5.2: Audit Logs Endpoint
 - **Files:** `backend/core/agent/views.py`, `backend/setu/urls.py`
 - Create `CommandLogListView` to return real command execution logs for the current user.
-- Connect TanStack query in `Dashboard.tsx` settings/permissions audit logs panel.
+- Connect TanStack query in `Dashboard.jsx` settings/permissions audit logs panel.
 
 ---
 
-### ⬜ Step 14.6: Speed Optimizations (Tier 0 Fast-Path + TTS Cache)
+### ✅ Step 14.6: Speed Optimizations (Tier 0 Fast-Path + TTS Cache) - COMPLETED
 
 **Prerequisites:** Step 14.5 complete.
 
@@ -319,7 +322,7 @@ class TTSCache:
 ```
 
 #### 14.6.3: Instant Acknowledgment
-- **WebSocket path** (`consumers.py`): Push `chunk_type: "status"` with `"acknowledged"` immediately on message receive — before Celery dispatch.
+- **WebSocket path** (`consumers.py`): Push `chunk_type: "status"` with `"acknowledged"` immediately on message receive — before processing dispatch.
 - **Listener path** (`listener.py`): Play short spoken cue ("On it!" / "Let me check...") while LLM processes complex commands.
 - **Impact:** User knows Setu heard them within ~200ms.
 
@@ -381,12 +384,11 @@ if fast:
 ---
 
 ### PHASE 4B: Local Efficiency & Cache (Milestone 2)
-*Goal: Implement local PyTorch intent classification and Redis semantic caching to optimize response times and API quota usage.*
-*Git Action: Commit and push to GitHub upon completing Step 16.*
+*Goal: Skipped for MVP. Direct routing to LLM is used instead to avoid ONNX/PyTorch overhead, and memory-backed channels replace Redis.*
 
 ---
 
-### ⬜ Step 15: Intent Pre-Classifier (PyTorch)
+### 🚫 SKIP (MVP): Step 15: Intent Pre-Classifier (PyTorch)
 
 **Prerequisites:** Step 14 complete.
 
@@ -426,7 +428,7 @@ else:
 
 ---
 
-### ⬜ Step 16: Reliability Architecture (Redis Semantic Cache + Hardening)
+### 🚫 SKIP (MVP): Step 16: Reliability Architecture (Redis Semantic Cache + Hardening)
 
 **Prerequisites:** Step 15 complete.
 
@@ -466,12 +468,11 @@ If all providers fail:
 ---
 
 ### PHASE 4C: Cross-Device Protocol & Peer Pairing (Milestone 3)
-*Goal: Build zeroconf device discovery, secure ECDH pairing handshake, and encrypted cross-device WSS command executor.*
-*Git Action: Commit and push to GitHub upon completing Step 17.*
+*Goal: Skipped for MVP. Simple WebSocket connection to phone replaces custom ECDH pairing.*
 
 ---
 
-### ⬜ Step 17: Cross-Device Protocol (LAN WebSocket)
+### 🚫 SKIP (MVP): Step 17: Cross-Device Protocol (LAN WebSocket)
 
 **Prerequisites:** Step 16 complete.
 **This is the core Setu feature.**
@@ -522,9 +523,9 @@ class CrossDeviceConsumer(AsyncWebsocketConsumer):
 
 ---
 
-### ⬜ Step 18: Browser Automation (Playwright)
+### ➡️ NEXT: Step 18: Browser Automation (Playwright)
 
-**Prerequisites:** Step 17 complete.
+**Prerequisites:** Phase 0 clean up complete.
 
 #### 18.1: Install & Setup
 ```bash
@@ -559,7 +560,7 @@ def submit_form(selector: str = "form") -> str:
 #### 18.3: Playwright Session Management
 **File:** `backend/core/agent/browser.py`
 - Single persistent `BrowserContext` per user session
-- Async Playwright inside Celery using `asyncio.run()`
+- Async Playwright inside background tasks thread using `asyncio.run()`
 - Auto-close browser after 5 minutes of inactivity
 
 #### 18.4: Agent System Prompt Update
@@ -568,7 +569,7 @@ def submit_form(selector: str = "form") -> str:
 
 ---
 
-### ⬜ Step 19: Desktop Automation (pywinauto)
+### 🚫 SKIP (MVP): Step 19: Desktop Automation (pywinauto)
 
 **Prerequisites:** Step 18 complete.
 
@@ -599,7 +600,7 @@ def type_into_desktop_field(window_title: str, field_name: str, text: str) -> st
 
 ---
 
-### ⬜ Step 20: Task Plan Confirmation Flow
+### 🚫 SKIP (MVP): Step 20: Task Plan Confirmation Flow
 
 **Prerequisites:** Step 19 complete.
 
@@ -628,7 +629,7 @@ def type_into_desktop_field(window_title: str, field_name: str, text: str) -> st
 
 ---
 
-### ⬜ Step 21: Screenshot Feedback System
+### 🚫 SKIP (MVP): Step 21: Screenshot Feedback System
 
 **Prerequisites:** Step 20 complete.
 
@@ -661,50 +662,9 @@ def capture_screenshot() -> str:
 
 ---
 
-### ⬜ Step 22: Persistent Memory & Contacts Store
+### 🚫 SKIP (MVP): Step 22: Persistent Memory & Contacts Store
 
-**Prerequisites:** Step 21 complete.
-
-#### 22.1: Memory Manager
-**File:** `backend/core/memory/manager.py`
-```python
-class MemoryManager:
-    def extract_and_store(self, user_id: str, conversation: list): ...
-    # After each task: LLM call to extract key facts → store in user_memory
-    
-    def inject_into_prompt(self, user_id: str) -> str: ...
-    # Returns formatted memory string to prepend to system prompt
-    
-    def get_all(self, user_id: str) -> list: ...
-    def delete(self, user_id: str, memory_id: str): ...
-```
-
-#### 22.2: UserMemory & Contact Models
-**File:** `backend/core/memory/models.py`
-- See `DATABASE_SCHEMA.md` §2.6 and §2.7 for full schemas
-
-#### 22.3: Contact Lookup Tool
-**File:** `backend/core/agent/tools.py` — add:
-```python
-@tool
-def lookup_contact(name: str) -> str:
-    """Look up a contact by name or alias. Returns phone, email, WhatsApp."""
-```
-
-#### 22.4: REST Endpoints
-```python
-# GET    /api/v1/memory/           → list user memories
-# DELETE /api/v1/memory/{id}/      → delete a memory
-# GET    /api/v1/contacts/         → list contacts
-# POST   /api/v1/contacts/         → add contact
-# DELETE /api/v1/contacts/{id}/    → delete contact
-```
-
-#### 22.5: Natural Language References
-**File:** `backend/core/agent/context.py`
-- Last command stored in Redis per user (`last_command:{user_id}`)
-- Intent classifier handles: `REPEAT_LAST` → re-execute from Redis
-- "Do that again" / "Repeat" / "What did you just do?" → handled without LLM call
+**Prerequisites:** Post-MVP. Memory and Contact database collections are skipped. Repeats are handled via LLM session history/context or standard frontend cache.
 
 ---
 
@@ -714,73 +674,23 @@ def lookup_contact(name: str) -> str:
 
 ---
 
-### ⬜ Step 23: Onboarding Wizard Upgrade (8 Steps)
+### 🚫 SKIP (MVP): Step 23: Onboarding Wizard Upgrade (8 Steps)
 
-**Prerequisites:** Step 22 complete.
-
-**File:** `frontend/src/pages/Onboarding.tsx`
-
-Replace 4-step wizard with 8 steps:
-
-| Step | Route | Content |
-|---|---|---|
-| 1 | `/onboarding/auth` | OAuth sign-in (Google / GitHub) |
-| 2 | `/onboarding/name` | "What should I call you?" |
-| 3 | `/onboarding/language` | Choose language: English / Hindi / Auto-detect |
-| 4 | `/onboarding/voice` | Choose voice: Female ♀ / Male ♂ (play sample) |
-| 5 | `/onboarding/permissions` | L2 permission toggle + EULA scroll + mandatory checkbox |
-| 6 | `/onboarding/pair` | Pair your phone — show 6-digit PIN, QR code |
-| 7 | `/onboarding/screenshot` | Screenshot preference: Always / Ask / Never |
-| 8 | `/onboarding/done` | "Hey Setu, I'm ready" → animated confirmation → `/dashboard` |
-
-- Each step PATCH `/api/v1/user/profile/` on Next press
-- Step 6 polls `/api/v1/devices/` until a device is paired (or skip button)
-- Framer Motion slide transitions between steps
+**Prerequisites:** Kept the current glassmorphic 4-step wizard to reduce complexity. No modifications to onboarding steps needed.
 
 ---
 
-### PHASE 4G: Mobile Client Integration (Milestone 7)
-*Goal: Develop the React Native phone application for voice/text execution over LAN, showing task status and screenshots.*
-*Git Action: Commit and push to GitHub upon completing Step 24.*
+### ➡️ Phase B: Mobile Client Integration (PWA)
 
----
+**Prerequisites:** Phase A complete. Replaces React Native with a lightweight Progressive Web App (PWA).
 
-### ⬜ Step 24: React Native Phone App
+#### 24.1: PWA Manifest & Service Worker
+- Create `frontend/public/manifest.json` and `frontend/public/sw.js` for home screen installable PWA.
+- Expose big tap-to-talk mic button on mobile view.
 
-**Prerequisites:** Step 25 complete.
-
-**Directory:** `mobile/`
-
-#### 24.1: App Setup
-```bash
-cd mobile
-npx react-native init SetuMobile --template react-native-template-typescript
-```
-
-#### 24.2: Core Screens
-- **Pairing screen** — mDNS scan for Setu laptops → show found devices → enter PIN
-- **Command screen** — Large mic button + text input → send to laptop WebSocket
-- **Task feed** — Live stream of task steps + screenshots from laptop
-- **Settings** — Connected device, language, screenshot preference
-
-#### 24.3: Voice Input
-- `react-native-voice` for STT on phone (backup to laptop STT)
-- Hold-to-record mic button
-
-#### 24.4: WebSocket Connection
-- Connect to `ws://{laptop_ip}:8000/ws/device/{device_id}/?token=<jwt>`
-- Auto-reconnect on disconnect with exponential backoff
-
-#### 24.5: Deep Links (App Launch on Phone)
-```javascript
-const DEEP_LINKS = {
-  instagram: 'instagram://',
-  youtube: 'youtube://',
-  whatsapp: 'whatsapp://send',
-  // ... etc
-}
-// On OPEN_APP_PHONE intent: Linking.openURL(DEEP_LINKS[app])
-```
+#### 24.2: Web Audio API mic recording on Phone
+- Capture audio directly from the phone browser, encode to base64, and stream over WebSocket to the Django backend.
+- Receive transcription and response back dynamically.
 
 ---
 
@@ -823,18 +733,14 @@ See `ENVIRONMENT_SETUP.md` for complete setup instructions.
 
 ### Quick Start
 ```bash
-# Terminal 1: Django ASGI Server
+# Terminal 1: Django ASGI Daphne Server
 cd backend && venv\Scripts\activate
 daphne -b 0.0.0.0 -p 8000 setu.asgi:application
 
-# Terminal 2: Celery Worker
-cd backend && venv\Scripts\activate
-celery -A setu worker --loglevel=info --pool=solo
-
-# Terminal 3: Frontend
+# Terminal 2: Frontend Dev Server
 cd frontend && npm run dev
 # Open: http://localhost:5173
 
-# Terminal 4 (optional): Local Voice Loop
+# Terminal 3 (optional): Local Voice Loop
 cd backend && python listener.py
 ```

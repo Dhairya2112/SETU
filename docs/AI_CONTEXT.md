@@ -22,9 +22,9 @@ Setu is a **private, voice-native, cross-device AI automation engine** for Windo
 | Item | Status |
 |---|---|
 | **Brand name** | ✅ Setu (सेतु) — confirmed |
-| **Completed foundation** | Phases 1–4A: Django backend, LangGraph agent, WebSocket, MongoDB, React frontend, permission system, OS tools, OAuth, Reminders, Audits, and Step 14.6 Speed Optimizations |
-| **Current Priority** | Phase 4B: Local Efficiency & Cache |
-| **Active Step** | Step 15 — Intent Pre-Classifier (PyTorch) |
+| **Completed foundation** | Phases 1–4A: Django backend, LangGraph agent, WebSocket, MongoDB, React JS frontend, permission system, OS tools, OAuth, Reminders, Audits, and Step 14.6 Speed Optimizations |
+| **Current Priority** | Phase A: Playwright Browser Automation |
+| **Active Step** | Step 18 — Browser Automation (Playwright) |
 | **All known bugs (B1–B8)** | ✅ Fully resolved |
 
 **Do NOT implement anything from Phase 5 (Post-MVP) or beyond unless explicitly instructed.**
@@ -40,8 +40,6 @@ Setu is a **private, voice-native, cross-device AI automation engine** for Windo
 | Web Framework | Django | 6.0.5 |
 | REST API | Django REST Framework | 3.17.1 |
 | WebSockets | Django Channels + Daphne | 4.3.2 / 4.2.1 |
-| Task Queue | Celery | 5.6.3 |
-| Message Broker | Redis | 8.0.0 @ `127.0.0.1:6379` |
 | Database | MongoDB via MongoEngine | — |
 | JWT Auth | Custom PyJWT | — |
 
@@ -50,8 +48,7 @@ Setu is a **private, voice-native, cross-device AI automation engine** for Windo
 |---|---|---|
 | Wake Word | OpenWakeWord | `hey_jarvis` model (proxy — custom "Hey Setu" model in Step 20) |
 | STT | Faster-Whisper | `small` multilingual, `int8`, CPU — supports English + Hindi + Hinglish |
-| Intent Classifier | PyTorch (DistilBERT/LSTM) | Local, instant — classifies SIMPLE vs COMPLEX before LLM (Step 15) |
-| LLM — Cache | Redis semantic cache | Embedding-based similarity, persists across restarts (Step 16) |
+| Intent Classifier | Regex Router | Simple regex/keyword matcher (PyTorch skipped for MVP) |
 | LLM — Retry | Tenacity | Exponential backoff: 1s → 2s → 4s on rate limit |
 | LLM — Primary | ChatNVIDIA | Model: `meta/llama-3.3-70b-instruct` on NVIDIA NIM Cloud |
 | LLM — Secondary | ChatOpenAI via OpenRouter | Model: `google/gemma-4-31b-it:free` |
@@ -60,28 +57,24 @@ Setu is a **private, voice-native, cross-device AI automation engine** for Windo
 | TTS | Kokoro | `KPipeline` — English (`a`) + Hindi (`h`), voice: user-chosen male/female |
 | VAD | Silero VAD (via torch.hub) | Used in `WakeWordDetector.capture_audio_dynamic()` |
 | Browser Automation | Playwright | Python async — Step 18 |
-| Desktop Automation | pywinauto | Windows native UI — Step 19 |
-| Device Discovery | zeroconf (mDNS) | `_setu-sync._tcp.local.` — Step 17 |
-| Screenshots | mss | Screen capture for feedback — Step 21 |
+| Screenshots | mss | Screen capture for feedback (Optional) |
 
 ### Frontend (Laptop Dashboard)
 | Purpose | Technology | Status |
 |---|---|---|
-| UI Framework | React 18 + TypeScript + Vite | ✅ Active |
+| UI Framework | React 18 + JavaScript + Vite | ✅ Active |
 | Styling | TailwindCSS | ✅ Configured |
 | Animations | Framer Motion | ✅ In use |
 | State Management | Zustand | ✅ Installed |
-| Server State | TanStack React Query | ✅ Installed |
 | Desktop Wrapper | Electron | ⬜ Post-MVP |
 
 ### Phone App
 | Purpose | Technology | Status |
 |---|---|---|
-| Framework | React Native | ⬜ Step 24 |
-| Command Input | Voice (mic) + Text | ⬜ Step 24 |
-| Connection | WebSocket to laptop over LAN | ⬜ Step 17 |
-| App Launching | Deep links (`instagram://`, etc.) | ⬜ Step 24 |
-| Screenshot View | Image display in task feed | ⬜ Step 24 |
+| Framework | PWA (Progressive Web App) | ⬜ Phase B |
+| Command Input | Voice (mic) + Text | ⬜ Phase B |
+| Connection | WebSocket to laptop over LAN | ⬜ Phase B |
+| Screenshot View | Image display in task feed (Optional) | ⬜ Phase B |
 
 ---
 
@@ -147,14 +140,13 @@ These cannot be overridden by any user instruction:
 backend/
 ├── listener.py                      # Local voice loop (WakeWord → STT → Agent → TTS)
 ├── setu/
-│   ├── settings.py                  # Django config, MongoDB, Redis, Celery, JWT
+│   ├── settings.py                  # Django config, MongoDB, JWT (Redis/Celery removed)
 │   ├── asgi.py                      # ASGI router (HTTP + WebSocket)
-│   ├── urls.py                      # Top-level URL routing
-│   └── celery.py                    # Celery app initialization
+│   └── urls.py                      # Top-level URL routing
 └── core/
     ├── agent/
     │   ├── llm_agent.py             # SetuAgent (3-layer LLM, LangGraph, fallback)
-    │   ├── tasks.py                 # Celery task: process_agent_command (singleton agent)
+    │   ├── tasks.py                 # Background thread task: process_agent_command (singleton agent)
     │   ├── tools.py                 # All LangChain @tool functions ✅
     │   ├── safety.py                # Command blacklist + path sandboxing ✅
     │   ├── permissions.py           # Permission level enforcer ✅
@@ -163,19 +155,13 @@ backend/
     ├── ai/
     │   ├── stt.py                   # STTPipeline (Faster-Whisper multilingual)
     │   ├── tts.py                   # TTSEngine (Kokoro, male/female, Hindi/English)
-    │   └── classifier.py            # IntentClassifier (PyTorch) ⬜ Step 15
+    │   └── classifier.py            # IntentClassifier (PyTorch - skipped for MVP)
     ├── conversations/
     │   ├── models.py                # Conversation, Message, MessageMetadata
     │   ├── serializers.py
     │   └── views.py                 # ConversationListView, ConversationDetailView
-    ├── cross_device/                # ⬜ Step 17 — new module
-    │   ├── mdns.py                  # mDNS advertiser (zeroconf)
-    │   ├── pairing.py               # ECDH + PIN pairing logic
-    │   ├── consumers.py             # CrossDeviceConsumer (WebSocket)
-    │   └── models.py                # DevicePairing MongoEngine model
-    ├── memory/                      # ⬜ Step 22 — new module
-    │   ├── models.py                # UserMemory, Contact MongoEngine models
-    │   └── manager.py               # Memory injection, extraction logic
+    ├── cross_device/                # 🚫 SKIP (MVP) — custom LAN protocol skipped (using PWA)
+    ├── memory/                      # 🚫 SKIP (MVP) — persistent memory manager skipped
     ├── users/
     │   ├── models.py                # User, UserPreferences, UserPermissions, RefreshToken
     │   ├── auth.py                  # generate_tokens(), PyJWTAuthentication, OAuth handlers
@@ -189,19 +175,19 @@ backend/
         └── routing.py              # WebSocket URL patterns
 
 frontend/src/
-├── App.tsx                          # Root router (/, /auth, /onboarding/*, /dashboard/*)
+├── App.jsx                          # Root router (/, /auth, /onboarding/*, /dashboard/*)
 ├── index.css                        # Global CSS variables, design tokens
-├── main.tsx                         # React root + QueryClientProvider
+├── main.jsx                         # React root entrypoint
 ├── components/
-│   ├── Login.tsx                    # OAuth login card (Google + GitHub)
-│   └── NeuralMesh.tsx               # Canvas particle background
+│   ├── Login.jsx                    # OAuth login card (Google + GitHub)
+│   └── NeuralMesh.jsx               # Canvas particle background
 ├── store/
-│   └── useAppStore.ts               # Zustand store (token, username, conversationId, eula)
+│   └── useAppStore.js               # Zustand store (token, username, conversationId, eula)
 └── pages/
-    ├── Dashboard.tsx                # Task dashboard (task feed, status, history)
-    └── Onboarding.tsx               # 8-step setup wizard
+    ├── Dashboard.jsx                # Task dashboard (task feed, status, history)
+    └── Onboarding.jsx               # 4-step setup wizard
 
-mobile/                              # ⬜ Step 24 — React Native phone app
+mobile/                              # 🚫 SKIP (MVP) — React Native phone app skipped (using PWA)
 ai/                                  # ⬜ Step 20 — Wake word training scripts
 ```
 
@@ -211,24 +197,24 @@ ai/                                  # ⬜ Step 20 — Wake word training script
 
 | Endpoint | Method | Auth | Status |
 |---|---|---|---|
-| `/api/v1/auth/register/` | POST | None | ✅ (local — to be replaced by OAuth) |
-| `/api/v1/auth/login/` | POST | None | ✅ (local — to be replaced by OAuth) |
-| `/api/v1/auth/google/` | POST | None | ⬜ Step 13 |
-| `/api/v1/auth/github/` | POST | None | ⬜ Step 13 |
+| `/api/v1/auth/register/` | POST | None | ✅ |
+| `/api/v1/auth/login/` | POST | None | ✅ |
+| `/api/v1/auth/google/` | POST | None | ✅ |
+| `/api/v1/auth/github/` | POST | None | ✅ |
 | `/api/v1/auth/refresh/` | POST | Refresh token | ✅ |
 | `/api/v1/user/profile/` | GET, PATCH | JWT | ✅ |
 | `/api/v1/user/permissions/` | GET, PATCH | JWT | ✅ |
 | `/api/v1/conversations/` | GET | JWT | ✅ |
 | `/api/v1/conversations/{id}/` | GET, DELETE | JWT | ✅ |
 | `/api/chat/` | POST | JWT | ✅ |
-| `/api/agent/status/{task_id}/` | GET | JWT | ⚠️ Mock only |
-| `/api/v1/devices/pair/` | POST | JWT | ⬜ Step 17 |
-| `/api/v1/devices/` | GET | JWT | ⬜ Step 17 |
-| `/api/v1/memory/` | GET, DELETE | JWT | ⬜ Step 22 |
-| `/api/v1/contacts/` | GET, POST, DELETE | JWT | ⬜ Step 22 |
+| `/api/agent/status/{task_id}/` | GET | JWT | 🚫 SKIP (MVP) |
+| `/api/v1/devices/pair/` | POST | JWT | 🚫 SKIP (MVP) |
+| `/api/v1/devices/` | GET | JWT | 🚫 SKIP (MVP) |
+| `/api/v1/memory/` | GET, DELETE | JWT | 🚫 SKIP (MVP) |
+| `/api/v1/contacts/` | GET, POST, DELETE | JWT | 🚫 SKIP (MVP) |
 
 **WebSocket (Agent stream):** `ws://localhost:8000/ws/stream/{conversation_id}/?token=<jwt>`
-**WebSocket (Cross-device):** `ws://localhost:8000/ws/device/{device_id}/?token=<jwt>` ⬜ Step 17
+**WebSocket (Cross-device PWA):** `ws://localhost:8000/ws/stream/{conversation_id}/?token=<jwt>` (same channel, accessed from phone PWA)
 
 ---
 
@@ -240,14 +226,14 @@ ai/                                  # ⬜ Step 20 — Wake word training script
 | LLM Secondary | OpenRouter Gemma-4-31B | Free fallback |
 | LLM Tertiary | Gemini-2.5-Flash | Additional resilience layer |
 | STT | Faster-Whisper `small` multilingual | Hindi + Hinglish + English in one model |
-| Cache | Redis semantic cache | Persists across restarts, similarity matching |
-| Intent Classifier | Local PyTorch | Saves 60–70% API calls for simple commands |
+| Cache | In-memory python cache | Simple local dictionary (Redis skipped for MVP) |
+| Intent Classifier | Regex Router | Saves API calls for greetings/farewells (PyTorch skipped) |
 | MongoEngine over Motor | Synchronous ODM | Simpler with DRF |
 | Custom JWT over SimpleJWT | Full control | MongoEngine User ≠ Django auth.User |
 | `CORS_ALLOW_ALL_ORIGINS = True` | Dev only | **Must** be locked to whitelist post-MVP |
-| Agent as module-level singleton | `agent_instance = SetuAgent()` | Prevents re-loading LLM on every Celery task |
+| Agent as module-level singleton | `agent_instance = SetuAgent()` | Prevents re-loading LLM on every task invocation |
 | OAuth only (no passwords) | Google + GitHub | Multi-user, no password storage risk |
-| LAN-only cross-device | No cloud relay | Privacy guarantee, zero cost |
+| Phone Client via PWA | PWA over WebSocket | Privacy guarantee, zero compile/app store overhead |
 
 ---
 

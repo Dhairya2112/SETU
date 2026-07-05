@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-interface LoginProps {
-  onLoginSuccess: (token: string, refreshToken: string) => void;
-}
-
-export function Login({ onLoginSuccess }: LoginProps) {
+export function Login({ onLoginSuccess }) {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -13,16 +9,16 @@ export function Login({ onLoginSuccess }: LoginProps) {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const executeOAuthLogin = useCallback(async (endpoint: string, payload: any) => {
+  const executeOAuthLogin = useCallback(async (endpoint, payload) => {
     try {
-      const response = await fetch(`http://localhost:8000${endpoint}`, {
+      const response = await fetch(`http://${window.location.hostname}:8000${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
       const contentType = response.headers.get('content-type');
-      let data: any = {};
+      let data = {};
       if (contentType && contentType.includes('application/json')) {
         data = await response.json();
       } else {
@@ -39,7 +35,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
       } else {
         throw new Error('No access token received');
       }
-    } catch (err: any) {
+    } catch (err) {
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -110,16 +106,16 @@ export function Login({ onLoginSuccess }: LoginProps) {
     window.location.href = githubAuthUrl;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
     const endpoint = isRegistering ? '/api/v1/auth/register/' : '/api/v1/auth/login/';
-    const url = `http://localhost:8000${endpoint}`;
+    const url = `http://${window.location.hostname}:8000${endpoint}`;
 
     try {
-      const payload: any = { email, password };
+      const payload = { email, password };
       if (isRegistering) {
         payload.username = username || email.split('@')[0];
       }
@@ -131,7 +127,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
       });
 
       const contentType = response.headers.get('content-type');
-      let data: any = {};
+      let data = {};
       
       if (contentType && contentType.includes('application/json')) {
         data = await response.json();
@@ -155,7 +151,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
       } else {
         throw new Error('No access token received');
       }
-    } catch (err: any) {
+    } catch (err) {
       setError(err.message);
     } finally {
       setIsLoading(false);

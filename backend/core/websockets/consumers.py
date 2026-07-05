@@ -74,7 +74,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
             'message': event['message']
         }))
 
-    # ── Handler: reminder fired by Celery Beat (Step 13) ──
+    # ── Handler: reminder fired by background scheduler (Step 13) ──
     async def reminder_notification(self, event):
         await self.send(text_data=json.dumps({
             'chunk_type': 'reminder',

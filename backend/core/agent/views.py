@@ -34,12 +34,16 @@ class CommandView(APIView):
             daemon=True
         ).start()
         
+        host = request.get_host()
+        ws_protocol = "wss" if request.is_secure() else "ws"
+        websocket_channel = f"{ws_protocol}://{host}/ws/stream/{conversation_id}/"
+
         return Response({
             "task_id": task_id,
             "conversation_id": conversation_id,
             "message_id": str(uuid.uuid4()),
             "status": "processing",
-            "websocket_channel": f"ws://localhost:8000/ws/stream/{conversation_id}/"
+            "websocket_channel": websocket_channel
         }, status=status.HTTP_202_ACCEPTED)
 
 class StatusView(APIView):

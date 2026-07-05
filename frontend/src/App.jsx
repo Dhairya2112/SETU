@@ -26,7 +26,7 @@ function App() {
 
     isRefreshingRef.current = true;
     try {
-      const response = await fetch('http://localhost:8000/api/v1/auth/refresh/', {
+      const response = await fetch(`http://${window.location.hostname}:8000/api/v1/auth/refresh/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: rt })
@@ -68,7 +68,7 @@ function App() {
     return () => clearInterval(interval);
   }, [refreshToken, refreshAccessToken]);
 
-  const handleLoginSuccess = (newToken: string, newRefreshToken: string) => {
+  const handleLoginSuccess = (newToken, newRefreshToken) => {
     setToken(newToken);
     setRefreshToken(newRefreshToken);
     navigate(onboardingCompleted ? '/dashboard' : '/onboarding/name');

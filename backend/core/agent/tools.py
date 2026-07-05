@@ -259,12 +259,40 @@ def open_application(app_name: str) -> str:
     # Otherwise, try opening it as a local system application
     candidates = app_aliases.get(name_lower, [name_lower])
 
+    def find_app_path(candidate: str) -> str | None:
+        import shutil
+        names = [candidate]
+        if not candidate.endswith(".exe"):
+            names.append(candidate + ".exe")
+        for name in names:
+            path = shutil.which(name)
+            if path:
+                return path
+            if platform.system() == "Windows":
+                import winreg
+                for hive in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
+                    try:
+                        key_path = f"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{name}"
+                        with winreg.OpenKey(hive, key_path) as key:
+                            val, _ = winreg.QueryValueEx(key, "")
+                            if val:
+                                return val
+                    except FileNotFoundError:
+                        continue
+        return None
+
     try:
         for candidate in candidates:
             try:
                 if platform.system() == "Windows":
+                    resolved = find_app_path(candidate)
+                    if not resolved:
+                        if candidate in ["explorer", "cmd", "wt", "calc", "notepad"]:
+                            resolved = candidate
+                        else:
+                            continue
                     subprocess.Popen(
-                        f"start {candidate}",
+                        f'"{resolved}"' if resolved != candidate else resolved,
                         shell=True,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
@@ -288,6 +316,7 @@ def open_application(app_name: str) -> str:
         result = f"Error opening {app_name}: {str(e)}"
         _log("open_application", app_name, result, "error")
         return result
+
 
 
 @tool
@@ -716,6 +745,90 @@ def set_reminder(title: str, remind_at: str, description: str = "") -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# 18.2  BROWSER AUTOMATION TOOLS (Step 18)
+# ─────────────────────────────────────────────────────────────────────────
+
+from .browser import BrowserManager
+
+browser_mgr = BrowserManager()
+
+
+@tool
+def navigate_browser(url: str) -> str:
+    """
+    Open browser and navigate to the specified URL. Requires Level 2 permission.
+    Example: navigate_browser("https://youtube.com")
+    """
+    if not check_permission(_get_user_id(), required_level=2):
+        _log("navigate_browser", url, PERMISSION_DENIED_MSG, "denied")
+        return PERMISSION_DENIED_MSG
+
+    result = browser_mgr.navigate(_get_user_id(), url)
+    _log("navigate_browser", url, result, "success" if not result.startswith("Error") else "error")
+    return result
+
+
+@tool
+def click_element(selector: str) -> str:
+    """
+    Click a CSS selector or visible text on the current browser page. Requires Level 2 permission.
+    Example: click_element("#search-button") or click_element("Sign In")
+    """
+    if not check_permission(_get_user_id(), required_level=2):
+        _log("click_element", selector, PERMISSION_DENIED_MSG, "denied")
+        return PERMISSION_DENIED_MSG
+
+    result = browser_mgr.click(_get_user_id(), selector)
+    _log("click_element", selector, result, "success" if not result.startswith("Error") else "error")
+    return result
+
+
+@tool
+def type_into_field(selector: str, text: str) -> str:
+    """
+    Type text into an input or form field on the current browser page. Requires Level 2 permission.
+    Example: type_into_field("input[name='search']", "setu assistant")
+    """
+    if not check_permission(_get_user_id(), required_level=2):
+        _log("type_into_field", f"{selector} | {text}", PERMISSION_DENIED_MSG, "denied")
+        return PERMISSION_DENIED_MSG
+
+    result = browser_mgr.type_text(_get_user_id(), selector, text)
+    _log("type_into_field", f"{selector} | {text}", result, "success" if not result.startswith("Error") else "error")
+    return result
+
+
+@tool
+def get_page_content(query: str = "") -> str:
+    """
+    Get the visible text content of the current active browser page. Requires Level 2 permission.
+    Use this to read and understand what is currently displayed on the page.
+    """
+    if not check_permission(_get_user_id(), required_level=2):
+        _log("get_page_content", query, PERMISSION_DENIED_MSG, "denied")
+        return PERMISSION_DENIED_MSG
+
+    result = browser_mgr.get_content(_get_user_id())
+    _log("get_page_content", query, result[:100], "success" if not result.startswith("Error") else "error")
+    return result
+
+
+@tool
+def submit_form(selector: str = "form") -> str:
+    """
+    Submit a form or press Enter on a selector on the current browser page. Requires Level 2 permission.
+    Example: submit_form("input[type='password']") or submit_form("form")
+    """
+    if not check_permission(_get_user_id(), required_level=2):
+        _log("submit_form", selector, PERMISSION_DENIED_MSG, "denied")
+        return PERMISSION_DENIED_MSG
+
+    result = browser_mgr.submit(_get_user_id(), selector)
+    _log("submit_form", selector, result, "success" if not result.startswith("Error") else "error")
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # TOOL REGISTRY — import this from llm_agent.py
 # ─────────────────────────────────────────────────────────────────────────
 
@@ -733,5 +846,11 @@ ALL_TOOLS = [
     write_file,
     search_files,
     list_directory,
+    # Step 18 — Browser Automation
+    navigate_browser,
+    click_element,
+    type_into_field,
+    get_page_content,
+    submit_form,
 ]
 
