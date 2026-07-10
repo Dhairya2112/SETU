@@ -1,14 +1,29 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework import status
 from .models import User, RefreshToken
 
+@override_settings(
+    DEBUG=True,
+    REST_FRAMEWORK={
+        'DEFAULT_AUTHENTICATION_CLASSES': (
+            'core.users.auth.PyJWTAuthentication',
+        ),
+        'DEFAULT_THROTTLE_CLASSES': [],
+        'DEFAULT_THROTTLE_RATES': {}
+    }
+)
 class OAuthTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         # Clean MongoDB collections before running tests
         User.objects.delete()
         RefreshToken.objects.delete()
+
+        # Disable throttling on OAuth and auth views dynamically for testing
+        from core.users.views import GoogleOAuthView, GitHubOAuthView, RegisterView, LoginView, RefreshView
+        for view in [GoogleOAuthView, GitHubOAuthView, RegisterView, LoginView, RefreshView]:
+            view.throttle_classes = []
 
     def tearDown(self):
         # Clean MongoDB collections after running tests
@@ -71,3 +86,6 @@ class OAuthTests(TestCase):
         response = self.client.post('/api/v1/auth/github/', {}, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['error']['code'], 'VALIDATION_ERROR')
+
+# Import cancellation tests to ensure they are discovered by Django test runner
+from core.agent.tests import CancellationTestCase

@@ -151,8 +151,8 @@ Replace chat-centric UI with task dashboard layout.
 
 > This phase has been simplified into 4 targeted milestones:
 > - **Phase 0:** TS to JS clean up ✅ (Completed)
-> - **Phase A:** Playwright Browser Automation (Days 2-4) ➡️ (Next)
-> - **Phase B:** Phone PWA + Voice (Days 5-7) ⬜
+> - **Phase A:** Playwright Browser Automation (Days 2-4) ✅ (Completed)
+> - **Phase B:** Phone PWA + Voice (Days 5-7) ➡️ (Next)
 > - **Phase C:** Polish & Demo (Days 8-10+) ⬜
 
 ---
@@ -523,7 +523,7 @@ class CrossDeviceConsumer(AsyncWebsocketConsumer):
 
 ---
 
-### ➡️ NEXT: Step 18: Browser Automation (Playwright)
+### ✅ Step 18: Browser Automation (Playwright)
 
 **Prerequisites:** Phase 0 clean up complete.
 
@@ -680,7 +680,7 @@ def capture_screenshot() -> str:
 
 ---
 
-### ➡️ Phase B: Mobile Client Integration (PWA)
+### ➡️ NEXT: Phase B: Mobile Client Integration (PWA)
 
 **Prerequisites:** Phase A complete. Replaces React Native with a lightweight Progressive Web App (PWA).
 
@@ -734,13 +734,14 @@ See `ENVIRONMENT_SETUP.md` for complete setup instructions.
 ### Quick Start
 ```bash
 # Terminal 1: Django ASGI Daphne Server
-cd backend && venv\Scripts\activate
-daphne -b 0.0.0.0 -p 8000 setu.asgi:application
+cd backend && venv\Scripts\activate.ps1
+python -m daphne -b 0.0.0.0 -p 8000 setu.asgi:application
 
 # Terminal 2: Frontend Dev Server
 cd frontend && npm run dev
 # Open: http://localhost:5173
 
 # Terminal 3 (optional): Local Voice Loop
-cd backend && python listener.py
+cd backend && venv\Scripts\activate.ps1
+python listener.py
 ```

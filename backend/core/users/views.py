@@ -142,6 +142,11 @@ class UserProfileView(APIView):
                 return Response(pref_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
                 
         user.save()
+        try:
+            from django.core.cache import cache
+            cache.delete(f"user_prefs_{user.user_id}")
+        except Exception:
+            pass
         return Response(UserSerializer(user).data)
 
 class UserPermissionsView(APIView):

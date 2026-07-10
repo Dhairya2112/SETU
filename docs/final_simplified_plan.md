@@ -109,8 +109,6 @@ Config files to update:
 ```
 landing/                 ✅ KEEP — static HTML landing page (index.html, style.css, script.js)
 ai/intent_classifier/    ⚡ IGNORE — trained model exists but not integrating for MVP
-mobile/                  ⚡ IGNORE — empty, using PWA instead
-nginx/                   ⚡ IGNORE — not needed for dev/demo
 ```
 
 ---

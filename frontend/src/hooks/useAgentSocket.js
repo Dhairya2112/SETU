@@ -5,6 +5,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
     const [messages, setMessages] = useState([]);
     const [isThinking, setIsThinking] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
+    const [activeStatus, setActiveStatus] = useState('idle');
     
     const socketRef = useRef(null);
     const currentAudioRef = useRef(null);
@@ -85,6 +86,9 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
                 return [...prev, { role: 'agent', text: data.message }];
               }
             });
+          } else if (data.chunk_type === 'text_user') {
+            setIsThinking(false);
+            setMessages(prev => [...prev, { role: 'user', text: data.message }]);
           } else if (data.chunk_type === 'audio') {
               if (currentAudioRef.current) {
                 currentAudioRef.current.pause();
@@ -128,6 +132,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
                   });
               }
           } else if (data.chunk_type === 'status') {
+              setActiveStatus(data.message);
               if (data.message === 'acknowledged') {
                   // Instant ack — Setu heard the command (< 200ms)
                   setIsThinking(true);
@@ -135,7 +140,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
               } else if (data.message === 'thinking') {
                   setIsThinking(true);
                   isStreamingRef.current = false;
-              } else if (data.message === 'done') {
+              } else if (data.message === 'done' || data.message === 'cancelled' || data.message === 'failed') {
                   setIsThinking(false);
                   isStreamingRef.current = false;
               }
@@ -192,6 +197,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
       // Optimistically add user message
       setMessages(prev => [...prev, { role: 'user', text }]);
       setIsThinking(true);
+      setActiveStatus('running');
       
       // Send to backend Celery worker
       socketRef.current.send(JSON.stringify({ text }));
@@ -200,5 +206,11 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
     }
   }, []);
 
-  return { isConnected, messages, isThinking, isSpeaking, sendCommand, stopSpeaking };
+  const cancelTask = useCallback(() => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ type: 'cancel' }));
+    }
+  }, []);
+
+  return { isConnected, messages, isThinking, isSpeaking, sendCommand, stopSpeaking, activeStatus, cancelTask };
 }

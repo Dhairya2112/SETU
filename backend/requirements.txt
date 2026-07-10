@@ -26,6 +26,7 @@ langchain==1.3.2
 langchain-community==0.4.2
 langchain-groq==1.1.2
 langchain-openai
+langchain-google-genai
 langchain-nvidia-ai-endpoints
 langgraph==1.2.2
 tenacity

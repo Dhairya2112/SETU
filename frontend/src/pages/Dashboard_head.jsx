@@ -4,38 +4,6 @@ import { useAgentSocket } from '../hooks/useAgentSocket';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { SetuLogo } from '../components/SetuLogo';
-import { deriveTasksFromMessages } from '../utils/taskUtils';
-
-const getClientOS = () => {
-  const ua = window.navigator.userAgent;
-  if (ua.indexOf("Windows NT 10.0") !== -1) return "Windows 11/10 Host";
-  if (ua.indexOf("Macintosh") !== -1) return "macOS Host";
-  if (ua.indexOf("Linux") !== -1) return "Linux Host";
-  if (ua.indexOf("Android") !== -1) return "Android Device";
-  if (ua.indexOf("iPhone") !== -1 || ua.indexOf("iPad") !== -1) return "iOS Device";
-  return "Local Host";
-};
-
-const getClientBrowser = () => {
-  const ua = window.navigator.userAgent;
-  if (ua.indexOf("Chrome") !== -1 && ua.indexOf("Edg") === -1) return "Chrome Browser";
-  if (ua.indexOf("Safari") !== -1 && ua.indexOf("Chrome") === -1) return "Safari Browser";
-  if (ua.indexOf("Firefox") !== -1) return "Firefox Browser";
-  if (ua.indexOf("Edg") !== -1) return "Edge Browser";
-  return "Web Client";
-};
-
-const formatProvider = (prov) => {
-  if (!prov) return 'Google Gemini';
-  switch (prov.toLowerCase()) {
-    case 'gemini': return 'Google Gemini';
-    case 'openrouter': return 'OpenRouter';
-    case 'nvidia': return 'NVIDIA NIM';
-    default: return prov;
-  }
-};
-
 export function Dashboard() {
   const navigate = useNavigate();
   const { token, conversationId, setUsername, logout } = useAppStore();
@@ -51,7 +19,7 @@ export function Dashboard() {
   const [expandedSessionId, setExpandedSessionId] = useState(null);
   const [showTaskStream, setShowTaskStream] = useState(false);
 
-  const { messages, isThinking, isSpeaking, sendCommand, stopSpeaking, activeStatus, cancelTask } = useAgentSocket({
+  const { messages, isThinking, isSpeaking, sendCommand, stopSpeaking } = useAgentSocket({
     token,
     conversationId,
     onReminderFired: (reminder) => {
@@ -152,6 +120,9 @@ export function Dashboard() {
         if (energy > 0.7) {
           console.log("Barge-in interrupted playback! Audio level:", energy);
           stopSpeaking();
+          startListening((transcript) => {
+            sendCommand(transcript);
+          });
         } else {
           bargeInFrameId = requestAnimationFrame(checkBargeIn);
         }
@@ -232,9 +203,9 @@ export function Dashboard() {
     email: 'daved@setu.local',
     user_id: 'usr_01j1wg5c82feae15ab00',
     preferences: {
-      ai_provider: 'gemini',
-      llm_mode: 'Cloud-Only',
-      llm_model: 'gemini-2.5-flash',
+      ai_provider: 'OpenRouter (Llama 3.3)',
+      llm_mode: 'Hybrid',
+      llm_model: 'meta-llama/llama-3.3-70b-instruct',
       theme: 'Aether Obsidian',
       language: 'English (US)'
     }
@@ -258,20 +229,17 @@ export function Dashboard() {
 
   // Load profile
   useEffect(() => {
-    if (token) {
+    if ((activeTab === 'Memory' || activeTab === 'Settings') && token) {
       fetch(`http://${window.location.hostname}:8000/api/v1/user/profile/`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => res.json())
         .then(data => {
           setProfile(data);
-          if (data?.username) {
-            setUsername(data.username);
-          }
         })
         .catch(console.error);
     }
-  }, [token, setUsername]);
+  }, [activeTab, token]);
 
   // Load audit logs
   useEffect(() => {
@@ -326,11 +294,52 @@ export function Dashboard() {
   };
 
   const getTasksFromMessages = () => {
-    return deriveTasksFromMessages(messages, isThinking, isSpeaking, activeStatus);
+    const tasks = [];
+    let currentTask = null;
+
+    messages.forEach((msg, index) => {
+      if (msg.role === 'user') {
+        if (currentTask) {
+          tasks.push(currentTask);
+        }
+        currentTask = {
+          id: `task-${index}`,
+          command: msg.text,
+          status: 'completed',
+          steps: [],
+          result: ''
+        };
+      } else if ((msg.role === 'assistant' || msg.role === 'agent') && currentTask) {
+        currentTask.steps = [];
+        currentTask.result = '';
+        const lines = msg.text.split('\n');
+        lines.forEach((line) => {
+          if (line.trim().startsWith('-') || line.trim().startsWith('*') || line.trim().match(/^\d+\./)) {
+            currentTask.steps.push({ text: line.replace(/^[-*\d.\s]+/, '').trim(), status: 'completed' });
+          } else {
+            currentTask.result = (currentTask.result ? currentTask.result + '\n' : '') + line;
+          }
+        });
+      }
+    });
+
+    if (currentTask) {
+      tasks.push(currentTask);
+    }
+
+    if (tasks.length > 0) {
+      const lastTask = tasks[tasks.length - 1];
+      const lastMsg = messages[messages.length - 1];
+      if (isThinking || isSpeaking || (lastMsg && lastMsg.role === 'user')) {
+        lastTask.status = 'running';
+      }
+      return [lastTask];
+    }
+
+    return [];
   };
 
-  const hasActiveTask = getTasksFromMessages().some(t => t.status === 'running' || t.status === 'cancelling');
-  const isCancelling = getTasksFromMessages().some(t => t.status === 'cancelling');
+  const hasActiveTask = getTasksFromMessages().some(t => t.status === 'running');
 
   useEffect(() => {
     if (hasActiveTask) {
@@ -346,13 +355,6 @@ export function Dashboard() {
     }
   }, [hasActiveTask]);
 
-  const aiProviderFormatted = formatProvider(profile?.preferences?.ai_provider);
-  const llmModelFormatted = profile?.preferences?.llm_model 
-    ? (profile.preferences.llm_model.includes('/') 
-        ? profile.preferences.llm_model.split('/').pop() 
-        : profile.preferences.llm_model)
-    : 'gemini-2.5-flash';
-
   return (
     <div className="w-full h-full relative overflow-hidden bg-transparent">
 
@@ -362,11 +364,14 @@ export function Dashboard() {
         {/* Brand Icon floating */}
         <div className="pointer-events-auto mb-10 group/brand flex items-center h-12 rounded-2xl w-12 hover:w-48 transition-all duration-300 ease-in-out bg-white/5 backdrop-blur-md border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.5)] overflow-hidden cursor-default">
           <div className="w-12 h-12 flex items-center justify-center shrink-0">
-            <SetuLogo size={20} />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8052ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+            </svg>
           </div>
-          <span className="whitespace-nowrap text-lg font-black tracking-widest text-white opacity-0 group-hover/brand:opacity-100 transition-opacity duration-300 ml-1 font-display">
-            SETU
-          </span>
+          <div className="flex flex-col ml-1 whitespace-nowrap opacity-0 group-hover/brand:opacity-100 transition-opacity duration-300">
+            <span className="font-bold text-base tracking-wide text-white leading-tight">Setu</span>
+            <span className="text-[8px] font-bold tracking-[0.2em] text-[#8052ff] uppercase leading-tight">Core</span>
+          </div>
         </div>
 
         {/* Navigation items */}
@@ -436,10 +441,10 @@ export function Dashboard() {
 
                     {/* Top Telemetry Badges Strip */}
                     <div className="flex flex-wrap items-center justify-center gap-3 mb-6 select-none z-20 relative">
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300" title={profile?.preferences?.llm_model || ''}>
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#8052ff]"></span>
                         <span className="text-zinc-500">LLM:</span>
-                        <span className="font-semibold">{aiProviderFormatted}</span>
+                        <span className="font-semibold">Llama 3.3</span>
                       </div>
                       <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300">
                         <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
@@ -542,10 +547,10 @@ export function Dashboard() {
 
                       {/* Top Telemetry Badges Strip */}
                       <div className="flex flex-wrap items-center justify-center gap-3 mb-6 select-none z-20 relative">
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300" title={profile?.preferences?.llm_model || ''}>
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#8052ff]"></span>
                           <span className="text-zinc-500">LLM:</span>
-                          <span className="font-semibold">{aiProviderFormatted}</span>
+                          <span className="font-semibold">Llama 3.3</span>
                         </div>
                         <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300">
                           <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
@@ -645,29 +650,6 @@ export function Dashboard() {
                         <span className="text-xs font-bold tracking-widest text-[#8052ff] uppercase font-mono">Synthesis Task Stream</span>
                         <div className="flex items-center gap-3">
                           <span className="text-[10px] text-zinc-500 font-mono">Running tasks: {getTasksFromMessages().filter(t => t.status === 'running').length}</span>
-                          {hasActiveTask && (
-                            <button
-                              onClick={cancelTask}
-                              disabled={isCancelling}
-                              className={`px-2.5 py-1 rounded-lg text-[10px] font-mono transition-colors uppercase flex items-center gap-1.5 shadow-sm border ${
-                                isCancelling 
-                                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-400 cursor-not-allowed opacity-80'
-                                  : 'bg-red-500/10 border-red-500/20 text-red-400 hover:text-red-300 hover:bg-red-500/20'
-                              }`}
-                            >
-                              {isCancelling ? (
-                                <>
-                                  <svg className="animate-spin" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" strokeOpacity="1"></path></svg>
-                                  Cancelling...
-                                </>
-                              ) : (
-                                <>
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="15"></line><line x1="15" y1="9" x2="9" y2="15"></line></svg>
-                                  Interrupt
-                                </>
-                              )}
-                            </button>
-                          )}
                           {!hasActiveTask && (
                             <button
                               onClick={() => setShowTaskStream(false)}
@@ -684,23 +666,11 @@ export function Dashboard() {
                           <div key={task.id} className="border border-white/5 bg-white/[0.01] backdrop-blur-[2px] rounded-3xl p-5 shadow-lg space-y-3.5 transition-all">
                             <div className="flex items-center justify-between">
                               <span className="text-[10px] font-mono text-zinc-500">TASK IDENTIFIER</span>
-                              <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                                task.status === 'completed'
+                              <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${task.status === 'completed'
                                   ? 'bg-[#15846e]/10 border border-[#15846e]/20 text-[#15846e]'
-                                  : task.status === 'cancelling'
-                                    ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400'
-                                    : task.status === 'cancelled' || task.status === 'failed'
-                                      ? 'bg-zinc-500/10 border border-zinc-500/20 text-zinc-400'
-                                      : 'bg-[#8052ff]/10 border border-[#8052ff]/20 text-[#8052ff] animate-pulse'
+                                  : 'bg-[#8052ff]/10 border border-[#8052ff]/20 text-[#8052ff] animate-pulse'
                                 }`}>
-                                {task.status === 'cancelling' ? (
-                                  <span className="flex items-center gap-1">
-                                    <svg className="animate-spin w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" strokeOpacity="0.25"></circle><path d="M12 2a10 10 0 0 1 10 10" strokeOpacity="1"></path></svg>
-                                    CANCELLING...
-                                  </span>
-                                ) : (
-                                  task.status
-                                )}
+                                {task.status}
                               </span>
                             </div>
                             <h3 className="text-base font-bold text-white font-display leading-snug">
@@ -718,7 +688,7 @@ export function Dashboard() {
                                   </div>
                                 ))}
                               </div>
-                            ) : (task.status === 'running' || task.status === 'cancelling') ? (
+                            ) : task.status === 'running' ? (
                               <div className="border-t border-white/5 pt-3.5 space-y-2">
                                 <span className="text-[9px] font-mono text-zinc-500 block mb-1.5">EXECUTION TRACE</span>
                                 <div className="flex items-center gap-2.5 text-[11px] font-sans text-zinc-300">
@@ -976,13 +946,13 @@ export function Dashboard() {
                           <div className="flex items-center justify-between">
                             <div>
                               <h4 className="text-sm font-semibold text-white mb-0.5">AI Provider</h4>
-                              <p className="text-[11px] text-zinc-500">{formatProvider(profile.preferences?.ai_provider)}</p>
+                              <p className="text-[11px] text-zinc-500">{profile.preferences?.ai_provider || 'Not set'}</p>
                             </div>
                           </div>
                           <div className="flex items-center justify-between">
                             <div>
                               <h4 className="text-sm font-semibold text-white mb-0.5">LLM Mode</h4>
-                              <p className="text-[11px] text-zinc-500">{profile.preferences?.llm_mode === 'cloud' ? 'Cloud-Only' : profile.preferences?.llm_mode === 'local' ? 'Local-Only' : (profile.preferences?.llm_mode || 'Not set')}</p>
+                              <p className="text-[11px] text-zinc-500">{profile.preferences?.llm_mode || 'Not set'}</p>
                             </div>
                           </div>
                           <div className="flex items-center justify-between">
@@ -1032,8 +1002,8 @@ export function Dashboard() {
                           <span className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Active</span>
                           <span className="text-xs text-zinc-500">Last synced: 1m ago</span>
                         </div>
-                        <h3 className="text-xl font-bold text-white mb-1 font-display">{getClientOS()}</h3>
-                        <p className="text-xs text-zinc-400 font-mono">{getClientBrowser()} ({window.location.hostname})</p>
+                        <h3 className="text-xl font-bold text-white mb-1 font-display">Workstation Host</h3>
+                        <p className="text-xs text-zinc-400 font-mono">Windows 11 Client (Localhost)</p>
                       </div>
                       <div className="border-t border-white/5 pt-4 mt-6 flex justify-between items-center">
                         <span className="text-xs text-zinc-400">Security L2 Permitted</span>
@@ -1125,13 +1095,13 @@ export function Dashboard() {
                           <label className="block">
                             <span className="text-xs text-zinc-400 block mb-1.5 font-medium">Provider</span>
                             <select
-                              value={profile?.preferences?.ai_provider || 'gemini'}
+                              value={profile?.preferences?.ai_provider || 'nvidia'}
                               onChange={(e) => updatePreference('ai_provider', e.target.value)}
                               className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#8052ff]/40"
                             >
-                              <option value="gemini">Google Gemini (Primary)</option>
+                              <option value="nvidia">NVIDIA NIM (Primary)</option>
                               <option value="openrouter">OpenRouter (Fallback)</option>
-                              <option value="nvidia">NVIDIA NIM (Tertiary)</option>
+                              <option value="gemini">Google Gemini (Tertiary)</option>
                             </select>
                           </label>
                           <label className="block">

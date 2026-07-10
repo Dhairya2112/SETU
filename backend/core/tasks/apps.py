@@ -28,5 +28,10 @@ class TasksConfig(AppConfig):
     name = 'core.tasks'
 
     def ready(self):
+        import sys
+        # Do not start scheduler thread during Django administrative or testing commands
+        if any(cmd in sys.argv for cmd in ['migrate', 'makemigrations', 'test', 'check', 'showmigrations', 'collectstatic']):
+            return
+
         t = threading.Thread(target=run_reminder_scheduler, daemon=True)
         t.start()

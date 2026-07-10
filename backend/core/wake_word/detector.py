@@ -12,7 +12,12 @@ class WakeWordDetector:
         # We use 'hey_jarvis' as a temporary proxy until the custom 'Hey Setu' model is trained.
         print("Loading OpenWakeWord model...")
         self.oww_model = Model(wakeword_models=['hey_jarvis'], inference_framework='onnx')
-        print("OpenWakeWord model loaded. Listening for 'Hey Setu' (using Jarvis model as a proxy)...")
+        import os
+        try:
+            self.threshold = float(os.getenv("WAKE_WORD_THRESHOLD", "0.45"))
+        except ValueError:
+            self.threshold = 0.45
+        print(f"OpenWakeWord model loaded. Listening for 'Hey Setu' (using Jarvis model as a proxy, threshold={self.threshold})...")
         
         print("Loading Silero VAD (PyTorch)...")
         self.vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad')
@@ -42,7 +47,7 @@ class WakeWordDetector:
                     current_score = scores[-1]
                     if current_score > 0.05: # Print anything remotely close
                         print(f"Jarvis Score: {current_score:.3f}")
-                    if current_score > 0.06: # Even lower threshold for easier activation!
+                    if current_score > self.threshold:
                         return True
 
     def close(self):
@@ -64,6 +69,15 @@ class WakeWordDetector:
 
     def capture_audio_dynamic(self, max_duration=15, silence_duration=0.7) -> np.ndarray:
         print("Listening (VAD active)...")
+        # Flush a small, tuned tail (max 150ms = 2400 samples) of buffered wake-word audio
+        try:
+            avail = self.stream.get_read_available()
+            if avail > 0:
+                to_discard = min(avail, 2400)
+                self.stream.read(to_discard, exception_on_overflow=False)
+        except Exception:
+            pass
+
         vad_chunk_size = 512
         frames = []
         silence_start = None

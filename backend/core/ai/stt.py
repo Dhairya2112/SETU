@@ -51,7 +51,7 @@ class STTPipeline:
         self.current_size = model_size
         print(f"Faster-Whisper model ({model_size}) loaded.")
 
-    def transcribe(self, audio_data: np.ndarray, sample_rate=16000) -> tuple[str, str]:
+    def transcribe(self, audio_data: np.ndarray, sample_rate=16000) -> tuple[str, str, float]:
         # audio_data should be float32 array
         
         # Bilingual prompt priming Whisper for terminology, names, and code-switching
@@ -61,19 +61,45 @@ class STTPipeline:
             "Aise tu, Setu."
         )
         
-        segments, info = self.model.transcribe(
-            audio_data, 
-            beam_size=5,
-            vad_filter=True,
-            vad_parameters=dict(
-                threshold=0.35, 
-                min_speech_duration_ms=200,
-                min_silence_duration_ms=400
-            ),
-            initial_prompt=bilingual_prompt,
-            temperature=[0.0, 0.2, 0.4]
-        )
-        text = " ".join([segment.text for segment in segments]).strip()
+        try:
+            segments, info = self.model.transcribe(
+                audio_data, 
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters=dict(
+                    threshold=0.35, 
+                    min_speech_duration_ms=200,
+                    min_silence_duration_ms=400
+                ),
+                initial_prompt=bilingual_prompt,
+                temperature=[0.0, 0.2, 0.4],
+                hotwords="Setu setu"
+            )
+        except TypeError:
+            # Fallback for older faster-whisper versions that don't support hotwords
+            segments, info = self.model.transcribe(
+                audio_data, 
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters=dict(
+                    threshold=0.35, 
+                    min_speech_duration_ms=200,
+                    min_silence_duration_ms=400
+                ),
+                initial_prompt=bilingual_prompt,
+                temperature=[0.0, 0.2, 0.4]
+            )
+
+        segment_list = list(segments)
+        text = " ".join([segment.text for segment in segment_list]).strip()
+        
+        # Calculate average log probability (confidence)
+        if segment_list:
+            avg_logprob = sum(s.avg_logprob for s in segment_list) / len(segment_list)
+        else:
+            avg_logprob = 0.0
+            
+        print(f"STT: avg_logprob={avg_logprob:.3f} for transcribed text: '{text}'")
         
         # Phonetic correction for misheard "Setu" wake word variations (Whisper STT limits)
         lower = text.lower().strip()
@@ -85,7 +111,8 @@ class STTPipeline:
             'hey zeto', 'hey say two', 'hey set two', 'hey safe to', 
             'hey step to', 'hey send to', 'hey aise tu', 'aise tu', 
             'hey ai setu', 'hey ae setu', 'hey aye setu', 'hey ai se tu', 
-            'hey ae se tu', 'hey aye se tu'
+            'hey ae se tu', 'hey aye se tu', 'hey siri', 'hey jarvis',
+            'hey google', 'ok google', 'hey alexa'
         ]
         
         matched_prefix = next((p for p in misheard_prefixes if lower.startswith(p)), None)
@@ -99,9 +126,9 @@ class STTPipeline:
                 'seetoo', 'sheto', 'sheeto', 'zeto', 'say two', 'set two', 
                 'safe to', 'step to', 'send to', 'aise tu', 'ai setu', 
                 'ae setu', 'aye setu', 'ai se tu', 'ae se tu', 'aye se tu', 
-                'aise'
+                'aise', 'siri', 'jarvis', 'google', 'alexa', 'jarvi'
             ]
             if lower in single_name_mishears:
                 text = "setu"
                     
-        return text, info.language
+        return text, info.language, avg_logprob

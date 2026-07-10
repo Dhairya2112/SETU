@@ -187,7 +187,6 @@ frontend/src/
     ├── Dashboard.jsx                # Task dashboard (task feed, status, history)
     └── Onboarding.jsx               # 4-step setup wizard
 
-mobile/                              # 🚫 SKIP (MVP) — React Native phone app skipped (using PWA)
 ai/                                  # ⬜ Step 20 — Wake word training scripts
 ```
 

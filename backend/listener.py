@@ -52,8 +52,22 @@ def main():
 
                      # 3. Speech to Text
                     print("Transcribing...")
-                    text_command, detected_lang = stt.transcribe(audio_data)
+                    text_command, detected_lang, avg_logprob = stt.transcribe(audio_data)
                     print(f"USER ({detected_lang}): {text_command}")
+
+                    # Confidence / length gate
+                    min_logprob = float(os.getenv("STT_MIN_LOGPROB", "-1.50"))
+                    is_valid = True
+                    if not text_command.strip() or len(text_command.strip()) < 2:
+                        is_valid = False
+                    elif avg_logprob < min_logprob:
+                        print(f"STT gate: Discarding low-confidence transcription '{text_command}' (avg_logprob={avg_logprob:.3f} < {min_logprob})")
+                        is_valid = False
+
+                    if not is_valid:
+                        voice = 'hf_alpha' if detected_lang == 'hi' else 'af_heart'
+                        tts.speak("Sorry, I didn't catch that.", voice=voice)
+                        continue
 
                     # Clean punctuation and check for exit commands
                     clean_command = text_command.lower()
@@ -90,7 +104,8 @@ def main():
                         voice = 'hf_alpha'
 
                     # 3.5. Tier 0 fast-path — instant response for greetings, etc.
-                    fast = fast_router.check(text_command, user_name="User", language=detected_lang)
+                    user_name = os.getenv("SETU_USER_NAME", "User")
+                    fast = fast_router.check(text_command, user_name=user_name, language=detected_lang)
                     if fast:
                         print(f"[Tier 0 — {fast.category}] {fast.text}")
                         tts.speak(fast.text, voice=voice)

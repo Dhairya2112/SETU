@@ -35,10 +35,15 @@ tts_engine     = TTSEngine()
 fast_router    = FastResponseRouter()
 tts_cache      = TTSCache()
 
+# Pre-warm common greetings asynchronously at server boot
+tts_cache.warm_cache(tts_engine, user_names=["there", "User", "dost", "daved"])
+
+
+from .cancellation import register_cancellation, unregister_cancellation, is_cancelled
 
 # ── User preference cache (Step 14.6.5) ──────────────────────────────────
 # Avoids a MongoDB lookup on every single command.
-_user_pref_cache = {}   # { user_id: { name, voice, speed, lang, cached_at } }
+from django.core.cache import cache
 _PREF_CACHE_TTL  = 300  # 5 minutes
 
 
@@ -47,9 +52,9 @@ def _get_user_prefs(user_id: str) -> dict:
     Get user display name + TTS preferences, with a 5-minute in-memory cache.
     Falls back to safe defaults if the user is not found (e.g. user_id='local').
     """
-    now = time.time()
-    cached = _user_pref_cache.get(user_id)
-    if cached and (now - cached['cached_at']) < _PREF_CACHE_TTL:
+    cache_key = f"user_prefs_{user_id}"
+    cached = cache.get(cache_key)
+    if cached:
         return cached
 
     # Defaults (used for local listener or if DB is unreachable)
@@ -58,7 +63,6 @@ def _get_user_prefs(user_id: str) -> dict:
         'voice': 'af_heart',
         'speed': 1.0,
         'lang': 'en',
-        'cached_at': now,
     }
 
     try:
@@ -78,8 +82,14 @@ def _get_user_prefs(user_id: str) -> dict:
     except Exception as e:
         logger.warning("Failed to load user prefs for %s: %s", user_id, e)
 
-    _user_pref_cache[user_id] = prefs
+    cache.set(cache_key, prefs, _PREF_CACHE_TTL)
     return prefs
+
+
+def clear_user_pref_cache(user_id: str) -> None:
+    """Clear the cached preferences for a specific user to force a database reload."""
+    cache.delete(f"user_prefs_{user_id}")
+    logger.info("Cleared user preference cache for: %s", user_id)
 
 
 def _push(channel_layer, group: str, chunk_type: str, message: str) -> None:
@@ -131,61 +141,130 @@ def process_agent_command(text: str, conversation_id: str, user_id: str) -> bool
     """
     channel_layer = get_channel_layer()
     group = f'chat_{conversation_id}'
+    has_error = False
 
-    # ── Load cached user preferences ──────────────────────────────────────
-    prefs = _get_user_prefs(user_id)
-    voice = prefs['voice']
-    speed = prefs['speed']
-
-    # ── TIER 0: Fast-path check (< 0.3s) ─────────────────────────────────
-    fast = fast_router.check(text, user_name=prefs['name'], language=prefs['lang'])
-    if fast:
-        logger.info("Tier 0 fast response [%s]: '%s' → '%s'", fast.category, text, fast.text)
-
-        _push(channel_layer, group, 'text', fast.text)
-
-        # Use cached TTS audio (generates on first hit, instant on subsequent)
-        audio_b64 = tts_cache.get_or_generate(fast.text, voice, tts_engine, speed)
-        if audio_b64:
-            _push(channel_layer, group, 'audio', audio_b64)
-
-        # Persist to conversation history
-        _persist_conversation(conversation_id, user_id, text, fast.text)
-
-        _push(channel_layer, group, 'status', 'done')
-        return True
-
-    # ── TIER 2: Full LLM pipeline ─────────────────────────────────────────
-    # (Tier 1 — Intent Classifier — will be inserted here in Step 15)
-
-    # Notify client: thinking
-    _push(channel_layer, group, 'status', 'thinking')
-
-    # ── Run agent & stream response tokens in real-time ──────────────────
-    response_text = ""
     try:
-        for token in agent_instance.run_stream(text, user_id=user_id, conversation_id=conversation_id):
-            if token:
-                _push(channel_layer, group, 'text', token)
-                response_text += token
+        register_cancellation(conversation_id)
+
+        # ── Load cached user preferences ──────────────────────────────────────
+        prefs = _get_user_prefs(user_id)
+        voice = prefs['voice']
+        speed = prefs['speed']
+
+        if is_cancelled(conversation_id):
+            _push(channel_layer, group, 'status', 'cancelled')
+            return True
+
+        # ── TIER 0: Fast-path check (< 0.3s) ─────────────────────────────────
+        start_time = time.time()
+        fast = fast_router.check(text, user_name=prefs['name'], language=prefs['lang'])
+        if fast:
+            duration = time.time() - start_time
+            logger.info("Tier 0 fast response [%s] matched in %.4fs: '%s' → '%s'", fast.category, duration, text, fast.text)
+
+            if is_cancelled(conversation_id):
+                _push(channel_layer, group, 'status', 'cancelled')
+                return True
+
+            _push(channel_layer, group, 'text', fast.text)
+
+            # Use cached TTS audio (generates on first hit, instant on subsequent)
+            tts_start = time.time()
+            try:
+                audio_b64 = tts_cache.get_or_generate(fast.text, voice, tts_engine, speed)
+                tts_duration = time.time() - tts_start
+                logger.info("Tier 0 TTS cache lookup/generation took %.4fs", tts_duration)
+                if audio_b64 and not is_cancelled(conversation_id):
+                    _push(channel_layer, group, 'audio', audio_b64)
+            except Exception as e:
+                logger.warning("TTS cache lookup/generation failed for fast-path: %s", e)
+
+            if is_cancelled(conversation_id):
+                _push(channel_layer, group, 'status', 'cancelled')
+                return True
+
+            # Persist to conversation history
+            _persist_conversation(conversation_id, user_id, text, fast.text)
+
+            _push(channel_layer, group, 'status', 'done')
+            return True
+
+        # ── TIER 2: Full LLM pipeline ─────────────────────────────────────────
+        # (Tier 1 — Intent Classifier — will be inserted here in Step 15)
+
+        if is_cancelled(conversation_id):
+            _push(channel_layer, group, 'status', 'cancelled')
+            return True
+
+        # Notify client: thinking / understanding
+        _push(channel_layer, group, 'status', 'understanding')
+
+        # ── Run agent & stream response tokens in real-time ──────────────────
+        response_text = ""
+        try:
+            def handle_status(status_msg):
+                _push(channel_layer, group, 'status', status_msg)
+
+            for token in agent_instance.run_stream(
+                text, 
+                user_id=user_id, 
+                conversation_id=conversation_id, 
+                status_callback=handle_status
+            ):
+                if is_cancelled(conversation_id):
+                    logger.info("Command processing cancelled for conversation %s", conversation_id)
+                    _push(channel_layer, group, 'status', 'cancelled')
+                    return True
+                if token:
+                    _push(channel_layer, group, 'text', token)
+                    response_text += token
+        except Exception as e:
+            logger.error("LLM stream failed for conversation %s: %s", conversation_id, e)
+            if is_cancelled(conversation_id):
+                _push(channel_layer, group, 'status', 'cancelled')
+                return True
+            error_msg = "\n[Response generation interrupted due to a system error.]"
+            _push(channel_layer, group, 'text', error_msg)
+            response_text += error_msg
+            has_error = True
+
+        if is_cancelled(conversation_id):
+            _push(channel_layer, group, 'status', 'cancelled')
+            return True
+
+        if not has_error:
+            # ── Generate and stream TTS audio ─────────────────────────────────────
+            try:
+                tts_start = time.time()
+                audio_b64 = tts_engine.generate_base64(response_text, voice=voice, speed=speed)
+                tts_duration = time.time() - tts_start
+                logger.info("TTS generation took %.4fs", tts_duration)
+                if audio_b64 and not is_cancelled(conversation_id):
+                    _push(channel_layer, group, 'audio', audio_b64)
+            except Exception as e:
+                logger.warning("TTS generation failed for conversation %s: %s", conversation_id, e)
+
+        if is_cancelled(conversation_id):
+            _push(channel_layer, group, 'status', 'cancelled')
+            return True
+
+        # ── Persist conversation to MongoDB ───────────────────────────────────
+        _persist_conversation(conversation_id, user_id, text, response_text)
+
+        # ── Notify client: done or failed ─────────────────────────────────────
+        if has_error:
+            _push(channel_layer, group, 'status', 'failed')
+        else:
+            _push(channel_layer, group, 'status', 'done')
+
     except Exception as e:
-        logger.error("LLM stream failed for conversation %s: %s", conversation_id, e)
-        error_msg = "\n[Response generation interrupted due to a system error.]"
-        _push(channel_layer, group, 'text', error_msg)
-        response_text += error_msg
-
-    # ── Generate and stream TTS audio ─────────────────────────────────────
-    try:
-        audio_b64 = tts_engine.generate_base64(response_text, voice=voice, speed=speed)
-        if audio_b64:
-            _push(channel_layer, group, 'audio', audio_b64)
-    except Exception as e:
-        logger.warning("TTS generation failed for conversation %s: %s", conversation_id, e)
-
-    # ── Persist conversation to MongoDB ───────────────────────────────────
-    _persist_conversation(conversation_id, user_id, text, response_text)
-
-    # ── Notify client: done ───────────────────────────────────────────────
-    _push(channel_layer, group, 'status', 'done')
+        logger.error("System error processing command: %s", e)
+        try:
+            _push(channel_layer, group, 'status', 'failed')
+        except Exception:
+            pass
+        return False
+    finally:
+        unregister_cancellation(conversation_id)
 
     return True

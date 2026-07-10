@@ -84,3 +84,44 @@ class TTSCache:
         """Clear all cached entries."""
         with self._lock:
             self._cache.clear()
+
+    def warm_cache(self, tts_engine, user_names=["there"], voices=['af_heart', 'hf_alpha']):
+        """
+        Pre-warms the cache for common Tier 0 fast responses on startup.
+        Runs in a background thread to prevent blocking server boot.
+        """
+        def _warm():
+            logger.info("Starting TTS cache pre-warming...")
+            try:
+                from core.agent.fast_responses import _PATTERNS
+            except ImportError:
+                try:
+                    from agent.fast_responses import _PATTERNS
+                except ImportError as e:
+                    logger.warning("Could not import _PATTERNS for TTS cache warming: %s", e)
+                    return
+
+            warmed_count = 0
+            for category, data in _PATTERNS.items():
+                # English templates
+                for template in data.get('responses', []):
+                    for name in user_names:
+                        try:
+                            text = template.format(name=name)
+                            self.get_or_generate(text, 'af_heart', tts_engine)
+                            warmed_count += 1
+                        except Exception as e:
+                            logger.warning("Failed to warm cache for template '%s': %s", template, e)
+                
+                # Hindi templates
+                for template in data.get('responses_hi', []):
+                    for name in user_names:
+                        try:
+                            text = template.format(name=name)
+                            self.get_or_generate(text, 'hf_alpha', tts_engine)
+                            warmed_count += 1
+                        except Exception as e:
+                            logger.warning("Failed to warm cache for Hindi template '%s': %s", template, e)
+            logger.info("TTS cache pre-warming complete. Generated %d response samples.", warmed_count)
+
+        threading.Thread(target=_warm, daemon=True).start()

@@ -112,10 +112,51 @@ DATABASES = {
 }
 
 # MongoDB — MongoEngine (application data)
+import socket
+import subprocess
+
+def ensure_mongodb_running():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(0.5)
+    is_open = sock.connect_ex(('127.0.0.1', 27017)) == 0
+    sock.close()
+    
+    if is_open:
+        return
+    
+    print("MongoDB is not running. Starting mongod automatically in the background...")
+    import os
+    from pathlib import Path
+    app_data = os.environ.get('LOCALAPPDATA', os.path.expanduser('~'))
+    db_path = Path(app_data) / "Setu" / "mongodb_data"
+    db_path.mkdir(parents=True, exist_ok=True)
+    
+    mongod_cmd = 'mongod'
+    if os.name == 'nt':
+        import glob
+        possible_paths = glob.glob('C:/Program Files/MongoDB/Server/*/bin/mongod.exe')
+        if possible_paths:
+            mongod_cmd = possible_paths[-1] # use the latest version found
+            
+    try:
+        subprocess.Popen(
+            [mongod_cmd, '--dbpath', str(db_path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=0x08000000 if os.name == 'nt' else 0
+        )
+        import time
+        time.sleep(2)
+    except FileNotFoundError:
+        print("WARNING: 'mongod' executable not found in PATH or Program Files. Please install MongoDB.")
+
+ensure_mongodb_running()
+
 import mongoengine
 mongoengine.connect(
     db=os.environ.get('MONGODB_DB', 'setu_db'),
-    host=os.environ.get('MONGODB_HOST', 'mongodb://localhost:27017/setu_db')
+    host=os.environ.get('MONGODB_HOST', 'mongodb://localhost:27017/setu_db'),
+    serverSelectionTimeoutMS=5000
 )
 
 

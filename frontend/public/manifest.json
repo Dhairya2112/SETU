@@ -1,0 +1,16 @@
+{
+  "short_name": "Setu",
+  "name": "Setu Workstation",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#030303",
+  "theme_color": "#8052ff",
+  "display": "standalone",
+  "orientation": "portrait"
+}
