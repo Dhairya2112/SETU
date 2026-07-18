@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from core.conversations.models import Conversation
-from core.tasks.models import CommandLog, Reminder
+from core.reminders.models import CommandLog, Reminder
 from core.users.models import User, RefreshToken
 
 class Command(BaseCommand):

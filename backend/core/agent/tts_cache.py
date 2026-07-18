@@ -112,16 +112,8 @@ class TTSCache:
                             warmed_count += 1
                         except Exception as e:
                             logger.warning("Failed to warm cache for template '%s': %s", template, e)
-                
-                # Hindi templates
-                for template in data.get('responses_hi', []):
-                    for name in user_names:
-                        try:
-                            text = template.format(name=name)
-                            self.get_or_generate(text, 'hf_alpha', tts_engine)
-                            warmed_count += 1
-                        except Exception as e:
-                            logger.warning("Failed to warm cache for Hindi template '%s': %s", template, e)
+                # Skipped Hindi warming by default to save RAM on startup
+                # The Hindi pipeline will load lazily if a user requests it.
             logger.info("TTS cache pre-warming complete. Generated %d response samples.", warmed_count)
 
         threading.Thread(target=_warm, daemon=True).start()

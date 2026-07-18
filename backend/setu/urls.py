@@ -10,7 +10,7 @@ urlpatterns = [
     path('api/v1/', include('core.users.urls')),
     path('api/v1/conversations/', include('core.conversations.urls')),
     path('api/v1/agent/', include('core.agent.urls')),
-    path('api/v1/reminders/', include('core.tasks.urls')),
+    path('api/v1/reminders/', include('core.reminders.urls')),
     
     # Auth Routes
     path('api/v1/auth/', include('dj_rest_auth.urls')),

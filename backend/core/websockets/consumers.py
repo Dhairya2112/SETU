@@ -1,16 +1,6 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-_stt_pipeline = None
-
-def get_stt_pipeline():
-    global _stt_pipeline
-    if _stt_pipeline is None:
-        from core.ai.stt import STTPipeline
-        _stt_pipeline = STTPipeline()
-    return _stt_pipeline
-
-
 class AgentStreamConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         if not self.scope["user"]:
@@ -27,7 +17,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
         @sync_to_async
         def verify_conversation_ownership(conversation_id, user_id):
             try:
-                conv = Conversation.objects(conversation_id=conversation_id).first()
+                conv = Conversation.objects(conversation_id=conversation_id).only('user_id').first()
                 if conv and conv.user_id != user_id:
                     return False
             except Exception:
@@ -79,7 +69,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
             if audio_base64:
                 import os
                 import base64
-                import tempfile
+                import io
                 import numpy as np
                 import soundfile as sf
                 from core.ai.stt import STTPipeline
@@ -94,14 +84,10 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                     # Decode base64 audio
                     audio_bytes = base64.b64decode(audio_base64)
 
-                    # Save to temp file
-                    with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as temp_file:
-                        temp_file.write(audio_bytes)
-                        temp_file_path = temp_file.name
-
                     try:
-                        # Load using soundfile
-                        data, samplerate = sf.read(temp_file_path)
+                        # Load using soundfile from memory buffer
+                        audio_io = io.BytesIO(audio_bytes)
+                        data, samplerate = sf.read(audio_io)
 
                         # Convert to mono if stereo
                         if len(data.shape) > 1:
@@ -121,7 +107,8 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                         audio_float32 = data.astype(np.float32)
 
                         # Transcribe using pipeline
-                        stt = get_stt_pipeline()
+                        from core.agent.state import stt_pipeline
+                        stt = stt_pipeline
                         text_command, _, avg_logprob = stt.transcribe(audio_float32)
                         print(f"Websocket STT Transcribed: {text_command}")
 
@@ -150,7 +137,8 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                                 'message': fallback_msg
                             }))
                             try:
-                                from core.agent.tasks import tts_engine, _get_user_prefs
+                                from core.agent.state import tts_engine
+                                from core.agent.pipeline import _get_user_prefs
                                 prefs = _get_user_prefs(self.scope["user"].user_id)
                                 audio_b64 = tts_engine.generate_base64(fallback_msg, voice=prefs['voice'], speed=prefs['speed'])
                                 if audio_b64:
@@ -177,7 +165,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
 
                             # Trigger agent command process task
                             import asyncio
-                            from core.agent.tasks import process_agent_command
+                            from core.agent.pipeline import process_agent_command
                             asyncio.create_task(
                                 asyncio.to_thread(
                                     process_agent_command,
@@ -192,10 +180,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                                 'message': 'done'
                             }))
                     finally:
-                        try:
-                            os.unlink(temp_file_path)
-                        except Exception:
-                            pass
+                        pass
                 except Exception as e:
                     print(f"Error transcribing websocket audio: {e}")
                     await self.send(text_data=json.dumps({
@@ -212,7 +197,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                 }))
 
                 import asyncio
-                from core.agent.tasks import process_agent_command
+                from core.agent.pipeline import process_agent_command
                 asyncio.create_task(
                     asyncio.to_thread(
                         process_agent_command,

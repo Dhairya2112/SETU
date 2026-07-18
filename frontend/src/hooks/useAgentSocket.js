@@ -9,6 +9,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
     
     const socketRef = useRef(null);
     const currentAudioRef = useRef(null);
+    const audioQueueRef = useRef([]);
     const isStreamingRef = useRef(false); // true while receiving a new agent response
 
     const onReminderFiredRef = useRef(onReminderFired);
@@ -16,7 +17,32 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
       onReminderFiredRef.current = onReminderFired;
     }, [onReminderFired]);
 
+    const playNextAudio = useCallback(() => {
+        if (audioQueueRef.current.length === 0) {
+            setIsSpeaking(false);
+            currentAudioRef.current = null;
+            return;
+        }
+        
+        const nextAudioUrl = audioQueueRef.current.shift();
+        const audio = new Audio(nextAudioUrl);
+        currentAudioRef.current = audio;
+        
+        audio.onplay = () => setIsSpeaking(true);
+        audio.onended = () => playNextAudio();
+        audio.onerror = (e) => {
+            console.error("Audio playback error:", e);
+            playNextAudio();
+        };
+        
+        audio.play().catch(e => {
+            console.error("Browser blocked audio playback:", e);
+            playNextAudio();
+        });
+    }, []);
+
     const stopSpeaking = useCallback(() => {
+      audioQueueRef.current = [];
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
         currentAudioRef.current = null;
@@ -90,31 +116,12 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
             setIsThinking(false);
             setMessages(prev => [...prev, { role: 'user', text: data.message }]);
           } else if (data.chunk_type === 'audio') {
-              if (currentAudioRef.current) {
-                currentAudioRef.current.pause();
-                currentAudioRef.current = null;
-              }
-
               const audioUrl = `data:audio/wav;base64,${data.message}`;
-              const audio = new Audio(audioUrl);
-              currentAudioRef.current = audio;
+              audioQueueRef.current.push(audioUrl);
               
-              audio.onplay = () => setIsSpeaking(true);
-              audio.onended = () => {
-                 setIsSpeaking(false);
-                 currentAudioRef.current = null;
-              };
-              audio.onerror = (e) => {
-                 console.error("Audio playback error:", e);
-                 setIsSpeaking(false);
-                 currentAudioRef.current = null;
-              };
-              
-              audio.play().catch(e => {
-                 console.error("Browser blocked audio playback:", e);
-                 setIsSpeaking(false);
-                 currentAudioRef.current = null;
-              });
+              if (!currentAudioRef.current || currentAudioRef.current.ended || currentAudioRef.current.paused) {
+                  playNextAudio();
+              }
           } else if (data.chunk_type === 'reminder') {
               // Acknowledge the reminder by deleting/completing it on the backend
               fetch(`http://${window.location.hostname}:8000/api/v1/reminders/${data.reminder_id}/`, {
@@ -181,6 +188,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
 
       return () => {
         isManualCleanup = true;
+        audioQueueRef.current = [];
         if (currentAudioRef.current) {
           currentAudioRef.current.pause();
           currentAudioRef.current = null;
@@ -194,6 +202,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
 
   const sendCommand = useCallback((text) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      stopSpeaking();
       // Optimistically add user message
       setMessages(prev => [...prev, { role: 'user', text }]);
       setIsThinking(true);

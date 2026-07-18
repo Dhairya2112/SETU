@@ -1,7 +1,7 @@
 """
 Setu Reminder Scanner (Step 13.4)
 
-Runs every 30 seconds via background daemon thread (core.tasks.apps.py).
+Runs every 30 seconds via background daemon thread (core.reminders.apps.py).
 Scans for due reminders and pushes them to the user's active WebSocket session.
 
 Push target: user_{user_id} channel group
@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 from .models import Reminder
 
-logger = logging.getLogger('core.tasks')
+logger = logging.getLogger('core.reminders')
 
 
 def check_and_fire_reminders() -> int:

@@ -4,7 +4,7 @@ import time
 import os
 import logging
 
-logger = logging.getLogger('core.tasks')
+logger = logging.getLogger('core.reminders')
 
 def run_reminder_scheduler():
     # Only run in the main process (skip Django's auto-reloader sub-process)
@@ -16,7 +16,7 @@ def run_reminder_scheduler():
     if not is_reloader:
         time.sleep(5)  # Wait for Django setup
         logger.info("Background reminder scheduler thread started.")
-        from core.tasks.tasks import check_and_fire_reminders
+        from core.reminders.tasks import check_and_fire_reminders
         while True:
             try:
                 check_and_fire_reminders()
@@ -24,8 +24,8 @@ def run_reminder_scheduler():
                 logger.error("Error in reminder scheduler: %s", e)
             time.sleep(30)
 
-class TasksConfig(AppConfig):
-    name = 'core.tasks'
+class RemindersConfig(AppConfig):
+    name = 'core.reminders'
 
     def ready(self):
         import sys

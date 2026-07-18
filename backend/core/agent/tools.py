@@ -690,7 +690,7 @@ def set_reminder(title: str, remind_at: str, description: str = "") -> str:
     """
     import dateparser
     from datetime import datetime, timezone
-    from core.tasks.models import Reminder
+    from core.reminders.models import Reminder
 
     # ── Parse the time string ──
     parsed_time = dateparser.parse(

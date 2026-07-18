@@ -25,7 +25,7 @@ class CommandView(APIView):
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
 
-        from .tasks import process_agent_command
+        from .pipeline import process_agent_command
         import threading
         task_id = str(uuid.uuid4())
         threading.Thread(

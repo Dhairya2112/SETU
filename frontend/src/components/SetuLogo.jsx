@@ -1,4 +1,3 @@
-import React from 'react';
 
 export function SetuLogo({ size = 24, className = "" }) {
   return (

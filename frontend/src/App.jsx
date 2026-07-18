@@ -10,7 +10,7 @@ import { useEffect, useCallback, useRef } from 'react';
 
 function App() {
   const navigate = useNavigate();
-  const { token, refreshToken, setToken, setRefreshToken, logout, onboardingCompleted } = useAppStore();
+  const { refreshToken, setToken, setRefreshToken, logout, onboardingCompleted } = useAppStore();
 
   const isRefreshingRef = useRef(false);
   const refreshTokenRef = useRef(refreshToken);

@@ -206,8 +206,8 @@ class SetuAgent:
 
     def _heal_checkpoint(self, conversation_id: str):
         """
-        Find any tool calls in the state history that do not have a corresponding ToolMessage,
-        and append the matching AIMessage + placeholder ToolMessage to prevent the checkpoint from being poisoned.
+        Check if the last message is an AI message with dangling tool calls.
+        If so, append a placeholder ToolMessage to prevent the checkpoint from being poisoned.
         """
         config = {"configurable": {"thread_id": conversation_id}}
         try:
@@ -216,44 +216,18 @@ class SetuAgent:
             if not messages:
                 return
 
-            ai_messages_with_calls = []
-            tool_message_ids = set()
-
-            for msg in messages:
-                if msg.type == "ai" and getattr(msg, "tool_calls", None):
-                    ai_messages_with_calls.append(msg)
-                elif msg.type == "tool":
-                    tool_call_id = getattr(msg, "tool_call_id", None)
-                    if tool_call_id:
-                        tool_message_ids.add(tool_call_id)
-
-            unmatched_ai_messages = []
-            placeholders = []
-
-            for ai_msg in ai_messages_with_calls:
-                unmatched_calls_in_msg = []
-                for tc in ai_msg.tool_calls:
-                    tc_id = tc.get("id")
-                    if tc_id and tc_id not in tool_message_ids:
-                        unmatched_calls_in_msg.append(tc)
-                
-                if unmatched_calls_in_msg:
-                    unmatched_ai_messages.append(ai_msg)
-                    from langchain_core.messages import ToolMessage
-                    for tc in unmatched_calls_in_msg:
-                        placeholders.append(ToolMessage(
-                            content="Command cancelled or failed due to an error.",
-                            name=tc.get("name", "unknown_tool"),
-                            tool_call_id=tc.get("id")
-                        ))
-
-            if unmatched_ai_messages and placeholders:
-                logger.warning("Found %d unmatched tool calls in conversation %s. Appending AI message and placeholder ToolMessages to heal state...", len(placeholders), conversation_id)
-                update_messages = []
-                for ai_msg in unmatched_ai_messages:
-                    update_messages.append(ai_msg)
-                update_messages.extend(placeholders)
-                self.primary_agent.update_state(config, {"messages": update_messages}, as_node="agent")
+            last_msg = messages[-1]
+            if last_msg.type == "ai" and getattr(last_msg, "tool_calls", None):
+                logger.warning("Found dangling tool calls at the end of conversation %s. Healing...", conversation_id)
+                from langchain_core.messages import ToolMessage
+                placeholders = []
+                for tc in last_msg.tool_calls:
+                    placeholders.append(ToolMessage(
+                        content="Command cancelled or failed due to an error.",
+                        name=tc.get("name", "unknown_tool"),
+                        tool_call_id=tc.get("id")
+                    ))
+                self.primary_agent.update_state(config, {"messages": placeholders}, as_node="agent")
                 logger.info("Conversation %s checkpoint healed successfully.", conversation_id)
         except Exception as e:
             logger.warning("Failed to heal checkpoint for conversation %s: %s", conversation_id, e)

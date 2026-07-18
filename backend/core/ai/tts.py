@@ -4,24 +4,44 @@ import numpy as np
 import io
 import soundfile as sf
 import base64
+import re
 
 class TTSEngine:
     def __init__(self):
-        print("Loading Kokoro TTS...")
-        self.pipelines = {
-            'a': KPipeline(lang_code='a'), # American English
-            'h': KPipeline(lang_code='h')  # Hindi
-        }
+        self.pipelines = {}
         self.default_voice = 'af_heart'
-        print("Kokoro TTS loaded.")
+        print("Kokoro TTSEngine initialized (models will load lazily).")
+
+    @staticmethod
+    def _clean_text(text: str) -> str:
+        """Strip markdown symbols so TTS reads naturally."""
+        if not text:
+            return ""
+        # Remove markdown bold/italic asterisks and underscores
+        text = re.sub(r'[*_]{1,3}([^*_]+)[*_]{1,3}', r'\1', text)
+        # Remove headers
+        text = re.sub(r'#+\s*', '', text)
+        # Remove links [text](url) -> text
+        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        # Remove inline code blocks
+        text = re.sub(r'`([^`]+)`', r'\1', text)
+        # Remove stray asterisks, underscores, or hash marks
+        text = re.sub(r'[*_#`]', '', text)
+        return text.strip()
 
     def _get_pipeline(self, voice: str):
         lang = 'a'
         if voice and voice.startswith('h'):
             lang = 'h'
-        return self.pipelines.get(lang, self.pipelines['a'])
+            
+        if lang not in self.pipelines:
+            print(f"Lazy-loading Kokoro TTS pipeline for language '{lang}'...")
+            self.pipelines[lang] = KPipeline(lang_code=lang)
+            
+        return self.pipelines[lang]
 
     def speak(self, text: str, voice: str = 'af_heart', speed: float = 1.0):
+        text = self._clean_text(text)
         print(f"Setu (TTS): {text}")
         pipeline = self._get_pipeline(voice)
         generator = pipeline(
@@ -41,6 +61,10 @@ class TTSEngine:
 
     def generate_base64(self, text: str, voice: str = 'af_heart', speed: float = 1.0) -> str:
         """Generates TTS audio and returns it as a Base64 encoded WAV string for WebSockets."""
+        text = self._clean_text(text)
+        if not text:
+            return ""
+            
         pipeline = self._get_pipeline(voice)
         generator = pipeline(
             text, voice=voice,

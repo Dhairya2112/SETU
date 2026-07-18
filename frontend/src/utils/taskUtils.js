@@ -52,10 +52,10 @@ export function deriveTasksFromMessages(messages, isThinking, isSpeaking, active
       lastTask.status = 'cancelled';
     } else if (activeStatus === 'cancelling') {
       lastTask.status = 'cancelling';
-    } else if (activeStatus === 'done') {
-      lastTask.status = 'completed';
     } else if (activeStatus === 'failed') {
       lastTask.status = 'failed';
+    } else if (activeStatus === 'done' && !isSpeaking) {
+      lastTask.status = 'completed';
     } else {
       lastTask.status = 'running';
     }

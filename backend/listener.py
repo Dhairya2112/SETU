@@ -5,7 +5,7 @@ import uuid
 # Ensure the agent modules can be found
 sys.path.append(os.path.join(os.path.dirname(__file__), 'core'))
 
-from wake_word.detector import WakeWordDetector
+from ai.wake_word import WakeWordDetector
 from ai.stt import STTPipeline
 from agent.llm_agent import SetuAgent
 from ai.tts import TTSEngine

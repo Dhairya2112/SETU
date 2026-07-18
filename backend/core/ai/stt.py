@@ -18,11 +18,7 @@ class STTPipeline:
         override = os.getenv("WHISPER_MODEL_SIZE")
         if override:
             return override
-        
-        if self.device == "cuda" and torch.cuda.is_available():
-            total_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
-            return "large-v3-turbo" if total_ram_gb >= 12.0 else "small"
-        return "base"
+        return "large-v3-turbo"
 
     def load_model(self, model_size=None):
         if not model_size:

@@ -27,6 +27,15 @@ Additionally, the deep codebase audit and UI bugs identified on June 22, 2026 ar
 - **BUG-14 (TTS/Synthesis Latency UI Block):** Refactored UI state flags to prevent input/recording overlap and correctly track async Kokoro TTS audio generation.
 - **BUG-15 (Task Stream Parser & History Accordion):** Updated parser to recognize `'agent'` message roles and added expandable session history cards.
 
+Additionally, the deep pipeline latency optimizations on July 19, 2026 are **✅ RESOLVED**:
+- **BUG-16 (Cold Start Penalty):** Moved ML singletons into Django AppConfig for boot-time loading.
+- **BUG-17 (TTS Streaming Block):** Implemented sentence-by-sentence parallel audio generation and frontend playback queuing.
+- **BUG-18 (WebSocket Disk I/O):** Replaced `.webm` temporary files with pure `io.BytesIO` memory buffers.
+- **BUG-19 (O(N) SQLite Overhead):** Refactored `_heal_checkpoint` to perform an O(1) peek instead of scanning all historical states.
+- **BUG-20 (MongoDB Read/Write Bloat):** Utilized atomic `$push` operations for message history appending.
+- **BUG-21 (Playwright RAM Bloat):** Restructured browser automation to share a single Chromium instance with lightweight contexts.
+- **BUG-22 (Double TTS Pipeline Memory Waste):** Implemented lazy loading for Kokoro language pipelines.
+
 ---
 
 ## PHASE 1: Core AI & Local Inference Foundation ✅ COMPLETED
@@ -151,8 +160,9 @@ Replace chat-centric UI with task dashboard layout.
 
 > This phase has been simplified into 4 targeted milestones:
 > - **Phase 0:** TS to JS clean up ✅ (Completed)
-> - **Phase A:** Playwright Browser Automation (Days 2-4) ✅ (Completed)
-> - **Phase B:** Phone PWA + Voice (Days 5-7) ➡️ (Next)
+> - **Phase 4A:** Identity, Voices, Reminders & Fallbacks ✅ (Completed)
+> - **Phase A:** Playwright Browser Automation (Days 2-4) ➡️ (Next)
+> - **Phase B:** Phone PWA + Voice (Days 5-7) ⬜
 > - **Phase C:** Polish & Demo (Days 8-10+) ⬜
 
 ---

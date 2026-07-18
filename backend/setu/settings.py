@@ -58,7 +58,7 @@ INSTALLED_APPS = [
     # Setu apps
     'core.users',
     'core.conversations',
-    'core.tasks',
+    'core.reminders',
     'core.agent',
     'core.websockets',
 ]

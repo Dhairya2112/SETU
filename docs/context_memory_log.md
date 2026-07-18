@@ -267,6 +267,11 @@ This log tracks every modification, cleanup, and feature implementation in detai
 ### 🕒 02:20 AM | Bug Fix: Tool Execution Stability & LLM Retry Logic
 - **Target Files**:
   - `backend/core/agent/llm_agent.py`
+- **Status**: Verified via custom testing. The agent successfully recovers from poisoned history states and processes new input normally.
+
+### 🕒 02:20 AM | Bug Fix: Tool Execution Stability & LLM Retry Logic
+- **Target Files**:
+  - `backend/core/agent/llm_agent.py`
 - **Actions**:
   - **Duplicate Tool Execution Fix**: Updated `_get_stable_config` to accept states ending in `ToolMessage` as stable if all tool calls from the preceding `AIMessage` match. Modified fallback layers to stream from `None` (resuming naturally) instead of re-injecting the user input, eliminating duplicate tool execution during response synthesis retries.
   - **Safety Filter Misclassification**: Explicitly caught `content_filter`, `safety`, and `blocked` exception strings in the `run_stream` exception handler to stop fallbacks from re-trying (and blocking) on other layers, instead returning a clean "I can't help with that request" message to the user.
@@ -274,9 +279,7 @@ This log tracks every modification, cleanup, and feature implementation in detai
   - **Persona Leak Fix**: Appended Rule #11 to `SYSTEM_PROMPT` to deflect meta-questions about implementation, internal vendors, or underlying architectures to stay strictly in the Setu persona.
 - **Status**: Checked edge-cases via browser subagent automation and python test scripts. All single and multi-step tool executions fall back safely without duplicate execution or poisoned states.
 
-
-
-### 🕒 02:35 AM | Bug Fix: Onboarding API Speed & MongoDB Clarification
+### 🕒 02:35 PM | Bug Fix: Onboarding API Speed & MongoDB Clarification
 - **Target Files**:
   - `backend/core/agent/tasks.py`
   - `backend/core/users/views.py`
@@ -285,3 +288,58 @@ This log tracks every modification, cleanup, and feature implementation in detai
   - **MongoDB Investigation**: Investigated reports of missing users and auto-deletion. Verified that the MongoEngine `User` model correctly defaults to `setu_db` (not the default `setu` or `test` DBs), and confirmed no TTL indexes exist on the collection. Users were perfectly safe, just located in the `setu_db` namespace.
 - **Status**: API routes decoupled from ML singleton instantiation. Onboarding profile saving is now instantaneous.
 
+---
+
+## 📅 July 11, 2026
+
+### 🕒 01:33 AM | Polish: TTS Cleaning, Error Fallbacks, & UI Sync
+- **Target Files**:
+  - `backend/core/ai/tts.py`
+  - `backend/core/agent/tasks.py`
+  - `frontend/src/utils/taskUtils.js`
+- **Actions**:
+  - **TTS Text Cleaning**: Implemented `_clean_text` in `TTSEngine` to strip markdown symbols (`*`, `#`, `_`, `[`, `]`, `` ` ``) before audio generation. This prevents Kokoro TTS from robotically reading formatting characters aloud, especially improving the natural flow of Hindi outputs.
+  - **Fallback TTS Generation**: Fixed an issue in `tasks.py` where system errors (`has_error = True`) would skip audio generation entirely. Setu now catches exceptions and dynamically generates a spoken fallback ("Sorry, I ran into a system error.") instead of failing silently.
+  - **Task Stream Sync**: Updated `deriveTasksFromMessages` in the frontend to check both `activeStatus === 'done'` AND `!isSpeaking`. This ensures the UI task stream remains marked as 'running' (and visible) until the browser's audio player has actually finished playing the TTS response, perfectly syncing the visual state with the audio playback.
+- **Status**: Backend pipeline is more resilient, and the frontend perfectly matches TTS audio duration.
+
+---
+
+## 📅 July 19, 2026
+
+### 🕒 01:25 AM | Pipeline Latency & Memory Optimizations (The 7-Step Refactor)
+- **Target Files**:
+  - `backend/core/agent/apps.py` (New)
+  - `backend/core/agent/state.py` (New)
+  - `backend/core/agent/__init__.py`
+  - `backend/core/agent/tasks.py`
+  - `backend/core/agent/browser.py`
+  - `backend/core/agent/llm_agent.py`
+  - `backend/core/websockets/consumers.py`
+  - `backend/core/ai/stt.py`
+  - `backend/core/ai/tts.py`
+  - `backend/core/agent/tts_cache.py`
+  - `frontend/src/hooks/useAgentSocket.js`
+- **Actions**:
+  - **1. Centralized Server Boot**: Moved ML singleton instantiations (`SetuAgent`, `TTSEngine`, `STTPipeline`, `FastResponseRouter`) into `state.py` and hooked into Django `AppConfig` to load models at boot, eliminating the 10s "first-request" cold start penalty.
+  - **2. True TTS Streaming**: Refactored `process_agent_command` to buffer LLM tokens by sentence and submit TTS chunks to a `ThreadPoolExecutor` (max_workers=1). Implemented an `audioQueueRef` on the frontend to play audio seamlessly as it streams in.
+  - **3. RAM-Only Audio Extraction**: Eliminated physical disk I/O (`tempfile`) for WebSocket STT decoding by replacing it with Python's native `io.BytesIO()`.
+  - **4. State Healing Optimization**: Refactored `_heal_checkpoint` from an O(N) full history scan into an O(1) check of just the final message, neutralizing CPU overhead on every LLM turn.
+  - **5. Atomic DB Updates**: Replaced full MongoEngine `Conversation` document fetches/saves with a single atomic `update_one(push_all__messages=...)` call for massive database I/O reduction. Added `.only('user_id')` to WebSocket auth checks.
+  - **6. Playwright RAM Leak Fix**: Restructured `BrowserManager` to launch one global Chromium process at server boot, and mapped individual users to lightweight isolated `BrowserContext` instances.
+  - **7. Lazy TTS Language Loading**: Modified `tts.py` to prevent eagerly loading both English and Hindi Kokoro models into memory simultaneously. Models are now dynamically lazy-loaded upon explicit user request. Hardcoded `stt.py` to `large-v3-turbo` for highest accuracy.
+- **Status**: Backend pipeline is highly resilient, extremely fast, and memory-safe. Django `check` passes cleanly.
+
+### 🕒 01:38 AM | Project Structure Consolidation & Cleanup
+- **Target Files & Folders**:
+  - `backend/core/tasks/` -> `backend/core/reminders/`
+  - `backend/core/agent/tasks.py` -> `backend/core/agent/pipeline.py`
+  - `backend/core/wake_word/detector.py` -> `backend/core/ai/wake_word.py`
+  - `ai/` (root) -> `backend/core/ai/models/`
+  - `landing/` (root) -> `frontend/public/landing/`
+- **Actions**:
+  - **Namespace Disambiguation**: Renamed the `core.tasks` app to `core.reminders` to clarify its purpose (user reminders) and renamed `agent/tasks.py` to `agent/pipeline.py` to eliminate naming collisions for the core LLM generator loop.
+  - **ML Consolidation**: Moved the Wake Word detector and the intent classifier models into `core/ai/` so all local inference engines are located in a single unified directory.
+  - **Root Directory Cleanup**: Relocated the standalone landing page to the frontend's public directory to be served statically, and deleted empty/redundant directories. Project root is now cleanly constrained to `backend/`, `frontend/`, and `docs/`.
+  - **Frontend Preparation**: Scaffolded `src/features/dashboard` and `src/features/onboarding` directories to prepare for future React component abstraction.
+- **Status**: All paths updated. `python manage.py check` passes with 0 issues.

@@ -29,14 +29,7 @@ from core.conversations.models import Conversation, Message, MessageMetadata
 
 logger = logging.getLogger('core.agent')
 
-# ── Module-level singletons — loaded once per process ─────────────────────
-agent_instance = SetuAgent()
-tts_engine     = TTSEngine()
-fast_router    = FastResponseRouter()
-tts_cache      = TTSCache()
-
-# Pre-warm common greetings asynchronously at server boot
-tts_cache.warm_cache(tts_engine, user_names=["there", "User", "dost", "daved"])
+from core.agent.state import agent_instance, tts_engine, fast_router, tts_cache
 
 
 from .cancellation import register_cancellation, unregister_cancellation, is_cancelled
@@ -106,22 +99,21 @@ def _persist_conversation(
 ) -> None:
     """Helper: save a user→assistant exchange to MongoDB."""
     try:
-        conv = Conversation.objects(conversation_id=conversation_id).first()
-        if not conv:
-            conv = Conversation(conversation_id=conversation_id, user_id=user_id)
+        msg1 = Message(role='user', content=user_text, metadata=MessageMetadata(input_type='text'))
+        msg2 = Message(role='assistant', content=assistant_text, metadata=MessageMetadata(input_type='text'))
 
-        conv.messages.append(Message(
-            role='user',
-            content=user_text,
-            metadata=MessageMetadata(input_type='text')
-        ))
-        conv.messages.append(Message(
-            role='assistant',
-            content=assistant_text,
-            metadata=MessageMetadata(input_type='text')
-        ))
-        conv.last_updated = datetime.now(timezone.utc)
-        conv.save()
+        updated = Conversation.objects(conversation_id=conversation_id).update_one(
+            set__last_updated=datetime.now(timezone.utc),
+            push_all__messages=[msg1, msg2]
+        )
+        
+        if not updated:
+            conv = Conversation(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                messages=[msg1, msg2]
+            )
+            conv.save()
     except Exception as e:
         logger.error("Failed to save conversation %s to MongoDB: %s", conversation_id, e)
 
@@ -201,23 +193,53 @@ def process_agent_command(text: str, conversation_id: str, user_id: str) -> bool
 
         # ── Run agent & stream response tokens in real-time ──────────────────
         response_text = ""
+        sentence_buffer = ""
+        has_error = False
+        import re
+        from concurrent.futures import ThreadPoolExecutor
+
         try:
             def handle_status(status_msg):
                 _push(channel_layer, group, 'status', status_msg)
+                
+            def generate_and_push_tts(sentence):
+                try:
+                    if not is_cancelled(conversation_id):
+                        audio_b64 = tts_engine.generate_base64(sentence, voice=voice, speed=speed)
+                        if audio_b64 and not is_cancelled(conversation_id):
+                            _push(channel_layer, group, 'audio', audio_b64)
+                except Exception as e:
+                    logger.warning("TTS chunk failed: %s", e)
 
-            for token in agent_instance.run_stream(
-                text, 
-                user_id=user_id, 
-                conversation_id=conversation_id, 
-                status_callback=handle_status
-            ):
-                if is_cancelled(conversation_id):
-                    logger.info("Command processing cancelled for conversation %s", conversation_id)
-                    _push(channel_layer, group, 'status', 'cancelled')
-                    return True
-                if token:
-                    _push(channel_layer, group, 'text', token)
-                    response_text += token
+            # Max workers=1 ensures TTS chunks are generated and sent in spoken order
+            with ThreadPoolExecutor(max_workers=1) as tts_executor:
+                for token in agent_instance.run_stream(
+                    text, 
+                    user_id=user_id, 
+                    conversation_id=conversation_id, 
+                    status_callback=handle_status
+                ):
+                    if is_cancelled(conversation_id):
+                        logger.info("Command processing cancelled for %s", conversation_id)
+                        _push(channel_layer, group, 'status', 'cancelled')
+                        return True
+                    if token:
+                        _push(channel_layer, group, 'text', token)
+                        response_text += token
+                        sentence_buffer += token
+                        
+                        match = re.search(r'([.?!]\s+|\n+)', sentence_buffer)
+                        if match:
+                            split_idx = match.end()
+                            complete_sentence = sentence_buffer[:split_idx].strip()
+                            sentence_buffer = sentence_buffer[split_idx:]
+                            
+                            if complete_sentence:
+                                tts_executor.submit(generate_and_push_tts, complete_sentence)
+                
+                if sentence_buffer.strip():
+                    tts_executor.submit(generate_and_push_tts, sentence_buffer.strip())
+
         except Exception as e:
             logger.error("LLM stream failed for conversation %s: %s", conversation_id, e)
             if is_cancelled(conversation_id):
@@ -227,22 +249,16 @@ def process_agent_command(text: str, conversation_id: str, user_id: str) -> bool
             _push(channel_layer, group, 'text', error_msg)
             response_text += error_msg
             has_error = True
+            
+            def send_error_tts():
+                generate_and_push_tts("Sorry, I ran into a system error.")
+            
+            import threading
+            threading.Thread(target=send_error_tts).start()
 
         if is_cancelled(conversation_id):
             _push(channel_layer, group, 'status', 'cancelled')
             return True
-
-        if not has_error:
-            # ── Generate and stream TTS audio ─────────────────────────────────────
-            try:
-                tts_start = time.time()
-                audio_b64 = tts_engine.generate_base64(response_text, voice=voice, speed=speed)
-                tts_duration = time.time() - tts_start
-                logger.info("TTS generation took %.4fs", tts_duration)
-                if audio_b64 and not is_cancelled(conversation_id):
-                    _push(channel_layer, group, 'audio', audio_b64)
-            except Exception as e:
-                logger.warning("TTS generation failed for conversation %s: %s", conversation_id, e)
 
         if is_cancelled(conversation_id):
             _push(channel_layer, group, 'status', 'cancelled')

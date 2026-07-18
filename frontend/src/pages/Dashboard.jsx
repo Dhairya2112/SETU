@@ -347,11 +347,7 @@ export function Dashboard() {
   }, [hasActiveTask]);
 
   const aiProviderFormatted = formatProvider(profile?.preferences?.ai_provider);
-  const llmModelFormatted = profile?.preferences?.llm_model 
-    ? (profile.preferences.llm_model.includes('/') 
-        ? profile.preferences.llm_model.split('/').pop() 
-        : profile.preferences.llm_model)
-    : 'gemini-2.5-flash';
+
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-transparent">

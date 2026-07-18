@@ -47,6 +47,9 @@ class BrowserManager:
 
     async def _setup_playwright(self):
         self.playwright = await async_playwright().start()
+        import os
+        headless = os.getenv("PLAYWRIGHT_HEADLESS", "True").lower() == "true"
+        self.browser = await self.playwright.chromium.launch(headless=headless, slow_mo=300)
 
     def _cleanup_loop(self):
         while self.running:
@@ -78,17 +81,13 @@ class BrowserManager:
             await self._close_session_async(user_id)
 
         logger.info("Launching new browser context for user %s", user_id)
-        import os
-        headless = os.getenv("PLAYWRIGHT_HEADLESS", "True").lower() == "true"
-        browser = await self.playwright.chromium.launch(headless=headless, slow_mo=300)
-        context = await browser.new_context(
+        context = await self.browser.new_context(
             viewport={"width": 1280, "height": 720},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
 
         self.sessions[user_id] = {
-            "browser": browser,
             "context": context,
             "page": page,
             "last_accessed": now
@@ -106,10 +105,6 @@ class BrowserManager:
                 await session["context"].close()
             except Exception:
                 pass
-            try:
-                await session["browser"].close()
-            except Exception:
-                pass
 
     def get_page(self, user_id: str):
         """Submit page retrieval to the event loop thread and wait for result."""
@@ -125,6 +120,8 @@ class BrowserManager:
     async def _shutdown_async(self):
         for user_id in list(self.sessions.keys()):
             await self._close_session_async(user_id)
+        if hasattr(self, 'browser') and self.browser:
+            await self.browser.close()
         if self.playwright:
             await self.playwright.stop()
             self.playwright = None
