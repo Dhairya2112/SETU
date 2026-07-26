@@ -29,7 +29,9 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
             return
 
         # Conversation-scoped group — receives agent streaming messages
-        self.room_group_name = f'chat_{self.conversation_id}'
+        import uuid
+        self.connection_id = uuid.uuid4().hex
+        self.room_group_name = f'chat_{self.conversation_id}_{self.connection_id}'
         # User-scoped group — receives reminder notifications (any session)
         self.user_group_name = f'user_{self.user_id}'
 
@@ -45,7 +47,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
         
         # Signal cancellation to clear running threads/tasks on disconnect
         if hasattr(self, 'conversation_id'):
-            from core.agent.cancellation import cancel_active_command
+            from core.agent.state import cancel_active_command
             cancel_active_command(self.conversation_id)
 
     async def receive(self, text_data=None, bytes_data=None):
@@ -54,13 +56,22 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
             
             # Handle user cancellation request (Step 14.1)
             if data.get('type') == 'cancel' or data.get('action') == 'cancel':
-                from core.agent.cancellation import cancel_active_command
+                from core.agent.state import cancel_active_command
                 cancel_active_command(self.conversation_id)
                 # Reply immediately with cancelling status
                 await self.send(text_data=json.dumps({
                     'chunk_type': 'status',
                     'message': 'cancelling'
                 }))
+                return
+
+            # Handle interactive permission response
+            if data.get('action') == 'permission_response':
+                from core.agent.state import resolve_permission_request
+                request_id = data.get('request_id')
+                status = data.get('status')
+                if request_id and status:
+                    resolve_permission_request(request_id, status)
                 return
 
             command_text = data.get('text')
@@ -107,8 +118,8 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                         audio_float32 = data.astype(np.float32)
 
                         # Transcribe using pipeline
-                        from core.agent.state import stt_pipeline
-                        stt = stt_pipeline
+                        from core.agent.state import get_stt
+                        stt = get_stt()
                         text_command, _, avg_logprob = stt.transcribe(audio_float32)
                         print(f"Websocket STT Transcribed: {text_command}")
 
@@ -137,10 +148,10 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                                 'message': fallback_msg
                             }))
                             try:
-                                from core.agent.state import tts_engine
+                                from core.agent.state import get_tts
                                 from core.agent.pipeline import _get_user_prefs
                                 prefs = _get_user_prefs(self.scope["user"].user_id)
-                                audio_b64 = tts_engine.generate_base64(fallback_msg, voice=prefs['voice'], speed=prefs['speed'])
+                                audio_b64 = get_tts().generate_base64(fallback_msg, voice=prefs['voice'], speed=prefs['speed'])
                                 if audio_b64:
                                     await self.send(text_data=json.dumps({
                                         'chunk_type': 'audio',
@@ -171,7 +182,8 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                                     process_agent_command,
                                     text_command,
                                     self.conversation_id,
-                                    self.scope["user"].user_id
+                                    self.scope["user"].user_id,
+                                    self.room_group_name
                                 )
                             )
                         else:
@@ -203,7 +215,8 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                         process_agent_command,
                         command_text,
                         self.conversation_id,
-                        self.scope["user"].user_id
+                        self.scope["user"].user_id,
+                        self.room_group_name
                     )
                 )
 

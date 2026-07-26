@@ -29,10 +29,10 @@ from core.conversations.models import Conversation, Message, MessageMetadata
 
 logger = logging.getLogger('core.agent')
 
-from core.agent.state import agent_instance, tts_engine, fast_router, tts_cache
+from core.agent.state import get_agent, get_tts, get_fast_router, get_tts_cache
 
 
-from .cancellation import register_cancellation, unregister_cancellation, is_cancelled
+from core.agent.state import register_cancellation, unregister_cancellation, is_cancelled
 
 # ── User preference cache (Step 14.6.5) ──────────────────────────────────
 # Avoids a MongoDB lookup on every single command.
@@ -118,7 +118,7 @@ def _persist_conversation(
         logger.error("Failed to save conversation %s to MongoDB: %s", conversation_id, e)
 
 
-def process_agent_command(text: str, conversation_id: str, user_id: str) -> bool:
+def process_agent_command(text: str, conversation_id: str, user_id: str, channel_group_name: str = None) -> bool:
     """
     Process a user command through the Setu agent pipeline.
 
@@ -132,7 +132,8 @@ def process_agent_command(text: str, conversation_id: str, user_id: str) -> bool
         user_id:         UUID of the requesting user.
     """
     channel_layer = get_channel_layer()
-    group = f'chat_{conversation_id}'
+    group = channel_group_name if channel_group_name else f'chat_{conversation_id}'
+    has_error = False
     has_error = False
 
     try:
@@ -149,7 +150,7 @@ def process_agent_command(text: str, conversation_id: str, user_id: str) -> bool
 
         # ── TIER 0: Fast-path check (< 0.3s) ─────────────────────────────────
         start_time = time.time()
-        fast = fast_router.check(text, user_name=prefs['name'], language=prefs['lang'])
+        fast = get_fast_router().check(text, user_name=prefs['name'], language=prefs['lang'])
         if fast:
             duration = time.time() - start_time
             logger.info("Tier 0 fast response [%s] matched in %.4fs: '%s' → '%s'", fast.category, duration, text, fast.text)
@@ -163,7 +164,7 @@ def process_agent_command(text: str, conversation_id: str, user_id: str) -> bool
             # Use cached TTS audio (generates on first hit, instant on subsequent)
             tts_start = time.time()
             try:
-                audio_b64 = tts_cache.get_or_generate(fast.text, voice, tts_engine, speed)
+                audio_b64 = get_tts_cache().get_or_generate(fast.text, voice, get_tts(), speed)
                 tts_duration = time.time() - tts_start
                 logger.info("Tier 0 TTS cache lookup/generation took %.4fs", tts_duration)
                 if audio_b64 and not is_cancelled(conversation_id):
@@ -205,7 +206,7 @@ def process_agent_command(text: str, conversation_id: str, user_id: str) -> bool
             def generate_and_push_tts(sentence):
                 try:
                     if not is_cancelled(conversation_id):
-                        audio_b64 = tts_engine.generate_base64(sentence, voice=voice, speed=speed)
+                        audio_b64 = get_tts().generate_base64(sentence, voice=voice, speed=speed)
                         if audio_b64 and not is_cancelled(conversation_id):
                             _push(channel_layer, group, 'audio', audio_b64)
                 except Exception as e:
@@ -213,7 +214,7 @@ def process_agent_command(text: str, conversation_id: str, user_id: str) -> bool
 
             # Max workers=1 ensures TTS chunks are generated and sent in spoken order
             with ThreadPoolExecutor(max_workers=1) as tts_executor:
-                for token in agent_instance.run_stream(
+                for token in get_agent().run_stream(
                     text, 
                     user_id=user_id, 
                     conversation_id=conversation_id, 

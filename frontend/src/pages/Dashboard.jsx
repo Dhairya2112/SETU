@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import { SetuLogo } from '../components/SetuLogo';
 import { deriveTasksFromMessages } from '../utils/taskUtils';
+import { SettingsView } from '../features/dashboard/SettingsView';
 
 const getClientOS = () => {
   const ua = window.navigator.userAgent;
@@ -39,19 +40,24 @@ const formatProvider = (prov) => {
 export function Dashboard() {
   const navigate = useNavigate();
   const { token, conversationId, setUsername, logout } = useAppStore();
-  const [activeTab, setActiveTab] = useState('TaskFeed');
+  const [activeTab, setActiveTabState] = useState(() => {
+    return localStorage.getItem('setu_active_tab') || 'TaskFeed';
+  });
+
+  const setActiveTab = (tab) => {
+    localStorage.setItem('setu_active_tab', tab);
+    setActiveTabState(tab);
+  };
 
   const messagesContainerRef = useRef(null);
 
   // Reminders State
   const [toasts, setToasts] = useState([]);
 
-  const [auditLogs, setAuditLogs] = useState([]);
-  const [newWhitelistPath, setNewWhitelistPath] = useState('');
   const [expandedSessionId, setExpandedSessionId] = useState(null);
   const [showTaskStream, setShowTaskStream] = useState(false);
 
-  const { messages, isThinking, isSpeaking, sendCommand, stopSpeaking, activeStatus, cancelTask } = useAgentSocket({
+  const { messages, isThinking, isSpeaking, sendCommand, stopSpeaking, activeStatus, cancelTask, permissionRequest, resolvePermissionRequest } = useAgentSocket({
     token,
     conversationId,
     onReminderFired: (reminder) => {
@@ -117,7 +123,10 @@ export function Dashboard() {
       .then(data => {
         if (data && data.username) setUsername(data.username);
       })
-      .catch(console.error);
+      .catch(err => {
+        console.error("Profile fetch failed:", err);
+        handleLogout();
+      });
   }, [token, navigate, handleLogout, setUsername]);
 
   // Poll audio level when listening
@@ -142,40 +151,6 @@ export function Dashboard() {
     };
   }, [isActive, getNormalizedEnergy]);
 
-  // Implement Barge-in
-  useEffect(() => {
-    let bargeInFrameId;
-
-    const checkBargeIn = () => {
-      if (isSpeaking) {
-        const energy = getNormalizedEnergy();
-        if (energy > 0.7) {
-          console.log("Barge-in interrupted playback! Audio level:", energy);
-          stopSpeaking();
-        } else {
-          bargeInFrameId = requestAnimationFrame(checkBargeIn);
-        }
-      }
-    };
-
-    if (isSpeaking) {
-      if (!isActive) {
-        startListening((transcript) => {
-          sendCommand(transcript);
-        }).then(() => {
-          bargeInFrameId = requestAnimationFrame(checkBargeIn);
-        }).catch(err => {
-          console.warn("Failed to activate microphone for barge-in monitoring:", err);
-        });
-      } else {
-        bargeInFrameId = requestAnimationFrame(checkBargeIn);
-      }
-    }
-
-    return () => {
-      if (bargeInFrameId) cancelAnimationFrame(bargeInFrameId);
-    };
-  }, [isSpeaking, isActive, getNormalizedEnergy, stopSpeaking, startListening, sendCommand]);
 
   // Autoscroll message container
   useEffect(() => {
@@ -185,8 +160,9 @@ export function Dashboard() {
   }, [messages, isThinking, activeTab]);
 
   const toggleListen = async () => {
-    if (isSpeaking) {
+    if (isSpeaking || activeStatus === 'running' || activeStatus === 'thinking') {
       stopSpeaking();
+      cancelTask();
       return;
     }
     if (isActive) {
@@ -218,11 +194,6 @@ export function Dashboard() {
       id: 'Memory',
       icon: <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>,
       label: "Memory"
-    },
-    {
-      id: 'Contacts',
-      icon: <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>,
-      label: "Contacts"
     }
   ];
 
@@ -274,20 +245,6 @@ export function Dashboard() {
   }, [token, setUsername]);
 
   // Load audit logs
-  useEffect(() => {
-    if (activeTab === 'Settings' && token) {
-      fetch(`http://${window.location.hostname}:8000/api/v1/agent/audit-logs/`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.results) {
-            setAuditLogs(data.results);
-          }
-        })
-        .catch(console.error);
-    }
-  }, [activeTab, token]);
 
   const updatePreference = (key, value) => {
     if (!token) return;
@@ -310,20 +267,7 @@ export function Dashboard() {
       .catch(console.error);
   };
 
-  const handleAddWhitelistPath = () => {
-    if (!newWhitelistPath.trim()) return;
-    const currentPaths = profile?.preferences?.whitelisted_paths || [];
-    if (!currentPaths.includes(newWhitelistPath.trim())) {
-      updatePreference('whitelisted_paths', [...currentPaths, newWhitelistPath.trim()]);
-    }
-    setNewWhitelistPath('');
-  };
 
-  const handleRemoveWhitelistPath = (pathToRemove) => {
-    const currentPaths = profile?.preferences?.whitelisted_paths || [];
-    const updatedPaths = currentPaths.filter((p) => p !== pathToRemove);
-    updatePreference('whitelisted_paths', updatedPaths);
-  };
 
   const getTasksFromMessages = () => {
     return deriveTasksFromMessages(messages, isThinking, isSpeaking, activeStatus);
@@ -1049,298 +993,13 @@ export function Dashboard() {
               </motion.div>
             )}
 
-            {/* CONTACTS VIEW */}
-            {activeTab === 'Contacts' && (
-              <motion.div
-                key="Contacts"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex-1 overflow-y-auto custom-scrollbar w-full py-10 px-10 lg:px-14 bg-transparent font-sans"
-              >
-                <div className="w-full max-w-5xl mx-auto space-y-8">
-                  <div>
-                    <h2 className="text-3xl font-bold text-white tracking-wide font-display">Contacts</h2>
-                    <p className="text-sm text-zinc-400 mt-2">People synced for quick messaging and contact actions.</p>
-                  </div>
-
-                  <div className="glass-panel rounded-3xl overflow-hidden border border-white/5">
-                    <div className="p-6 border-b border-white/5 flex justify-between items-center">
-                      <span className="text-sm font-bold text-white">All Contacts</span>
-                      <button className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-white border border-white/10 transition-colors flex items-center gap-2">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
-                        Add Contact
-                      </button>
-                    </div>
-                    <div className="divide-y divide-white/5">
-                      {[
-                        { name: "Aria Chen", phone: "+1 (555) 019-2834", relation: "Developer" },
-                        { name: "Marcus Vance", phone: "+1 (555) 014-9921", relation: "Manager" },
-                        { name: "Dev Team Lead", phone: "+1 (555) 012-3456", relation: "Team" }
-                      ].map((contact, i) => (
-                        <div key={i} className="p-4 flex items-center justify-between hover:bg-white/[0.01] transition-colors">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#8052ff]/10 to-transparent border border-[#8052ff]/20 flex items-center justify-center text-sm font-bold text-white">
-                              {contact.name.charAt(0)}
-                            </div>
-                            <div>
-                              <h4 className="text-sm font-semibold text-white">{contact.name}</h4>
-                              <p className="text-xs text-zinc-500">{contact.phone}</p>
-                            </div>
-                          </div>
-                          <span className="px-2.5 py-1 rounded-full bg-white/5 border border-white/5 text-[10px] font-semibold text-zinc-400">{contact.relation}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
             {/* SETTINGS VIEW */}
             {activeTab === 'Settings' && (
-              <motion.div
-                key="Settings"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex-1 overflow-y-auto custom-scrollbar w-full py-10 px-10 lg:px-14 bg-transparent font-sans"
-              >
-                <div className="w-full max-w-5xl mx-auto space-y-8">
-                  <div>
-                    <h2 className="text-3xl font-bold text-white tracking-wide font-display">Settings</h2>
-                    <p className="text-sm text-zinc-400 mt-2">Configure system thresholds, providers, and integration rules.</p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Column 1: AI & Voice */}
-                    <div className="space-y-6">
-                      <div className="glass-panel rounded-3xl p-6 space-y-4">
-                        <h3 className="text-base font-bold text-white mb-2 font-display">AI & Engine</h3>
-                        <div className="space-y-3">
-                          <label className="block">
-                            <span className="text-xs text-zinc-400 block mb-1.5 font-medium">Provider</span>
-                            <select
-                              value={profile?.preferences?.ai_provider || 'gemini'}
-                              onChange={(e) => updatePreference('ai_provider', e.target.value)}
-                              className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#8052ff]/40"
-                            >
-                              <option value="gemini">Google Gemini (Primary)</option>
-                              <option value="openrouter">OpenRouter (Fallback)</option>
-                              <option value="nvidia">NVIDIA NIM (Tertiary)</option>
-                            </select>
-                          </label>
-                          <label className="block">
-                            <span className="text-xs text-zinc-400 block mb-1.5 font-medium">LLM Mode</span>
-                            <select
-                              value={profile?.preferences?.llm_mode || 'cloud'}
-                              onChange={(e) => updatePreference('llm_mode', e.target.value)}
-                              className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#8052ff]/40"
-                            >
-                              <option value="cloud">Cloud-Only</option>
-                              <option value="local">Local-Only</option>
-                            </select>
-                          </label>
-                          <label className="block">
-                            <span className="text-xs text-zinc-400 block mb-1.5 font-medium">LLM Model Name</span>
-                            <input
-                              type="text"
-                              value={profile?.preferences?.llm_model || ''}
-                              onChange={(e) => updatePreference('llm_model', e.target.value)}
-                              className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#8052ff]/40"
-                            />
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="glass-panel rounded-3xl p-6 space-y-4">
-                        <h3 className="text-base font-bold text-white mb-2 font-display">Audio & Voice</h3>
-                        <div className="space-y-3">
-                          <label className="block">
-                            <span className="text-xs text-zinc-400 block mb-1.5 font-medium">Language</span>
-                            <select
-                              value={profile?.preferences?.language || 'en'}
-                              onChange={(e) => updatePreference('language', e.target.value)}
-                              className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#8052ff]/40"
-                            >
-                              <option value="en">English (US)</option>
-                              <option value="hi">Hindi (India)</option>
-                            </select>
-                          </label>
-                          <label className="block">
-                            <span className="text-xs text-zinc-400 block mb-1.5 font-medium">Voice Gender</span>
-                            <select
-                              value={profile?.preferences?.tts_voice_gender || 'female'}
-                              onChange={(e) => updatePreference('tts_voice_gender', e.target.value)}
-                              className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#8052ff]/40"
-                            >
-                              <option value="female">Female</option>
-                              <option value="male">Male</option>
-                            </select>
-                          </label>
-                          <label className="block">
-                            <span className="text-xs text-zinc-400 block mb-1.5 font-medium">Speech Speed ({profile?.preferences?.tts_speed || 1.0}x)</span>
-                            <input
-                              type="range"
-                              min="0.5"
-                              max="2.0"
-                              step="0.1"
-                              value={profile?.preferences?.tts_speed || 1.0}
-                              onChange={(e) => updatePreference('tts_speed', parseFloat(e.target.value))}
-                              className="w-full accent-[#8052ff] h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer"
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="text-xs text-zinc-400 block mb-1.5 font-medium">Wake Word Sensitivity ({profile?.preferences?.wake_word_sensitivity || 0.5})</span>
-                            <input
-                              type="range"
-                              min="0.01"
-                              max="1.0"
-                              step="0.01"
-                              value={profile?.preferences?.wake_word_sensitivity || 0.5}
-                              onChange={(e) => updatePreference('wake_word_sensitivity', parseFloat(e.target.value))}
-                              className="w-full accent-[#8052ff] h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer"
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Column 2: Security & Sandbox */}
-                    <div className="space-y-6">
-                      <div className="glass-panel rounded-3xl p-6 space-y-4">
-                        <h3 className="text-base font-bold text-white mb-2 font-display">System Controls & Sandbox</h3>
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h4 className="text-sm font-semibold text-white mb-0.5">Trust Mode (By-pass Permission prompts)</h4>
-                              <p className="text-xs text-zinc-500">Allow agent to run commands without prompting.</p>
-                            </div>
-                            <input
-                              type="checkbox"
-                              checked={profile?.preferences?.trust_mode || false}
-                              onChange={(e) => updatePreference('trust_mode', e.target.checked)}
-                              className="w-4 h-4 accent-[#8052ff] rounded border-white/10"
-                            />
-                          </div>
-                          <label className="block">
-                            <span className="text-xs text-zinc-400 block mb-1.5 font-medium">Screenshot Permission</span>
-                            <select
-                              value={profile?.preferences?.screenshot_preference || 'ask'}
-                              onChange={(e) => updatePreference('screenshot_preference', e.target.value)}
-                              className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#8052ff]/40"
-                            >
-                              <option value="always">Always Allow</option>
-                              <option value="ask">Ask Every Time</option>
-                              <option value="never">Never Allow</option>
-                            </select>
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="glass-panel rounded-3xl p-6 space-y-4">
-                        <h3 className="text-base font-bold text-white mb-2 font-display">Sandbox Whitelisted Folders</h3>
-                        <div className="space-y-3">
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              placeholder="e.g. C:\Users\daved\Desktop"
-                              value={newWhitelistPath}
-                              onChange={(e) => setNewWhitelistPath(e.target.value)}
-                              className="flex-1 bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#8052ff]/40"
-                            />
-                            <button
-                              onClick={handleAddWhitelistPath}
-                              className="px-4 bg-[#8052ff] hover:bg-[#8052ff]/80 text-white rounded-xl text-xs font-bold transition-colors"
-                            >
-                              Add
-                            </button>
-                          </div>
-                          <div className="max-h-36 overflow-y-auto custom-scrollbar space-y-2 mt-2">
-                            {(profile?.preferences?.whitelisted_paths || []).length === 0 ? (
-                              <p className="text-xs text-zinc-500 italic">No whitelisted folders. Defaulting to home directory.</p>
-                            ) : (
-                              (profile?.preferences?.whitelisted_paths || []).map((path, idx) => (
-                                <div key={idx} className="flex justify-between items-center bg-white/5 border border-white/5 rounded-xl p-2.5 text-xs text-zinc-300">
-                                  <span className="truncate max-w-[80%] font-mono">{path}</span>
-                                  <button
-                                    onClick={() => handleRemoveWhitelistPath(path)}
-                                    className="text-zinc-500 hover:text-red-400 transition-colors"
-                                  >
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                  </button>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Audit Logs Section */}
-                  <div className="glass-panel rounded-3xl p-6 space-y-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <div>
-                        <h3 className="text-base font-bold text-white font-display">Activity & Security Audit Logs</h3>
-                        <p className="text-xs text-zinc-500">History of all OS actions executed by the agent.</p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          if (token) {
-                            fetch(`http://${window.location.hostname}:8000/api/v1/agent/audit-logs/`, {
-                              headers: { 'Authorization': `Bearer ${token}` }
-                            })
-                              .then(res => res.json())
-                              .then(data => {
-                                if (data && data.results) setAuditLogs(data.results);
-                              })
-                              .catch(console.error);
-                          }
-                        }}
-                        className="p-2 hover:bg-white/5 rounded-xl text-zinc-400 hover:text-white transition-colors"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" /></svg>
-                      </button>
-                    </div>
-
-                    <div className="w-full overflow-x-auto custom-scrollbar">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="border-b border-white/5 text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
-                            <th className="pb-3 pr-4">Action</th>
-                            <th className="pb-3 pr-4">Target / Input</th>
-                            <th className="pb-3 pr-4">Status</th>
-                            <th className="pb-3">Time</th>
-                          </tr>
-                        </thead>
-                        <tbody className="text-xs text-zinc-300 divide-y divide-white/5">
-                          {auditLogs.length === 0 ? (
-                            <tr>
-                              <td colSpan={4} className="py-4 text-center text-zinc-500 italic">No activity logged yet.</td>
-                            </tr>
-                          ) : (
-                            auditLogs.map((log) => {
-                              let statusColor = "text-green-400";
-                              if (log.status === "BLOCKED" || log.status === "DENIED") statusColor = "text-red-400";
-                              else if (log.status === "ERROR") statusColor = "text-amber-500";
-
-                              return (
-                                <tr key={log.log_id} className="hover:bg-white/[0.01]">
-                                  <td className="py-3 pr-4 font-semibold text-white">{log.tool_name}</td>
-                                  <td className="py-3 pr-4 max-w-xs truncate font-mono text-zinc-400" title={log.tool_input}>{log.tool_input}</td>
-                                  <td className="py-3 pr-4"><span className={`font-semibold ${statusColor}`}>{log.status}</span></td>
-                                  <td className="py-3 text-zinc-500">{new Date(log.executed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                                </tr>
-                              );
-                            })
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
+              <SettingsView 
+                profile={profile} 
+                updatePreference={updatePreference} 
+                token={token} 
+              />
             )}
 
 
@@ -1348,9 +1007,50 @@ export function Dashboard() {
         </div>
       </main>
 
+      {/* Minimal Top-Center Permission Pill */}
+      <AnimatePresence>
+        {permissionRequest && (
+          <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[10000] pointer-events-none w-full max-w-2xl px-4 flex justify-center">
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95, transition: { duration: 0.15 } }}
+              className="pointer-events-auto bg-[#0a0a0a]/90 backdrop-blur-2xl border border-white/10 rounded-full p-2 pl-5 pr-2 shadow-[0_10px_40px_rgba(0,0,0,0.5)] flex items-center gap-6"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-2 h-2 rounded-full bg-[#8052ff] animate-pulse shrink-0 shadow-[0_0_8px_rgba(128,82,255,0.8)]"></div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-semibold text-white leading-tight flex gap-1">
+                    Setu wants to <span className="font-bold text-[#8052ff]">{permissionRequest.action}</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-zinc-400 truncate max-w-[250px] sm:max-w-[350px]">{permissionRequest.path}</span>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-1 shrink-0">
+                <button 
+                  onClick={() => resolvePermissionRequest(permissionRequest.request_id, 'denied')}
+                  className="px-4 py-1.5 bg-transparent hover:bg-white/10 text-zinc-400 hover:text-white rounded-full text-xs font-semibold transition-colors"
+                >
+                  Deny
+                </button>
+                <button 
+                  onClick={() => resolvePermissionRequest(permissionRequest.request_id, 'allowed')}
+                  className="px-4 py-1.5 bg-white text-black hover:bg-zinc-200 rounded-full text-xs font-bold transition-colors shadow-sm"
+                >
+                  Allow
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Floating Toast Notification Container */}
       <div className="fixed top-6 right-6 z-[9999] space-y-3 pointer-events-none max-w-sm w-full">
         <AnimatePresence>
+
+
           {toasts.map((toast) => (
             <motion.div
               initial={{ opacity: 0, y: -20, scale: 0.9 }}

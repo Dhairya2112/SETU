@@ -1,5 +1,4 @@
 from kokoro import KPipeline
-import sounddevice as sd
 import numpy as np
 import io
 import soundfile as sf
@@ -27,7 +26,13 @@ class TTSEngine:
         text = re.sub(r'`([^`]+)`', r'\1', text)
         # Remove stray asterisks, underscores, or hash marks
         text = re.sub(r'[*_#`]', '', text)
-        return text.strip()
+        
+        text = text.strip()
+        # Kokoro hangs in an infinite loop on purely non-alphanumeric text
+        if not any(c.isalnum() for c in text):
+            return ""
+            
+        return text
 
     def _get_pipeline(self, voice: str):
         lang = 'a'
@@ -56,8 +61,7 @@ class TTSEngine:
                 
         if audio_chunks:
             full_audio = np.concatenate(audio_chunks)
-            sd.play(full_audio, 24000) # Kokoro output sample rate is 24000
-            sd.wait()
+            # Local playback removed for cross-device automation
 
     def generate_base64(self, text: str, voice: str = 'af_heart', speed: float = 1.0) -> str:
         """Generates TTS audio and returns it as a Base64 encoded WAV string for WebSockets."""

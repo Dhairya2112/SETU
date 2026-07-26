@@ -343,3 +343,21 @@ This log tracks every modification, cleanup, and feature implementation in detai
   - **Root Directory Cleanup**: Relocated the standalone landing page to the frontend's public directory to be served statically, and deleted empty/redundant directories. Project root is now cleanly constrained to `backend/`, `frontend/`, and `docs/`.
   - **Frontend Preparation**: Scaffolded `src/features/dashboard` and `src/features/onboarding` directories to prepare for future React component abstraction.
 - **Status**: All paths updated. `python manage.py check` passes with 0 issues.
+
+---
+
+## 📅 July 25, 2026
+
+### 🕒 02:40 PM | UI Cleanup & Interaction Pipeline Stabilization
+- **Target Files**:
+  - `frontend/src/pages/Dashboard.jsx`
+  - `frontend/src/hooks/useAgentSocket.js`
+  - `frontend/src/utils/taskUtils.js`
+  - `backend/core/ai/tts.py`
+- **Actions**:
+  - **TTS Sanitization (Critical)**: Modified `_clean_text` in `tts.py` to drop purely non-alphanumeric text strings entirely. This prevents a critical bug where the Kokoro TTS engine would hang in an infinite loop inside background executor threads when fed symbols or whitespace.
+  - **Microphone Permission UI**: Replaced the large blocking browser modal for microphone permissions with a minimal, aesthetic top-center floating pill that matches the project's premium design language.
+  - **Barge-In Logic Removal**: Removed the aggressive barge-in logic that caused conflicts between audio playback and microphone activation. It was replaced with a more stable, cooperative "Stop/Talk" button and interruption flags.
+  - **WebSocket Audio Interruption Fix**: Fixed a race condition where the frontend instantly dropped incoming audio chunks from the server. Restructured `sendCommand()` so that it properly stops previous audio without permanently flagging the current session as interrupted.
+  - **Task Status Refresh Bug**: Patched `deriveTasksFromMessages` in `taskUtils.js` to explicitly handle the `'idle'` status, ensuring that historical conversation tasks accurately show up as `COMPLETED` on page refresh instead of erroneously defaulting to `RUNNING`.
+- **Status**: Backend worker thread deadlocks are fully resolved. UI states correctly map to the user's audio and historical data, and the dashboard design is more refined.

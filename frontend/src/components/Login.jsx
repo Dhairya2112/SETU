@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { SetuLogo } from './SetuLogo';
 
 export function Login({ onLoginSuccess }) {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -169,11 +170,7 @@ export function Login({ onLoginSuccess }) {
         <div className="flex flex-col items-center mb-6">
           {/* Brand Icon Mark */}
           <div className="w-12 h-12 flex items-center justify-center mb-4">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" stroke="rgba(255, 255, 255, 0.08)" strokeWidth="1" />
-              <path d="M16 8.5H10.5a2.5 2.5 0 0 0 0 5h3a2.5 2.5 0 0 1 0 5H8" />
-              <circle cx="12.5" cy="13.5" r="1.5" fill="#8052ff" stroke="none" />
-            </svg>
+            <SetuLogo size={40} />
           </div>
           
           <h2 className="text-2xl font-bold tracking-tight text-white text-center uppercase">

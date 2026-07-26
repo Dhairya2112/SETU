@@ -15,5 +15,6 @@ class AgentConfig(AppConfig):
         is_reloader = os.environ.get('RUN_MAIN') is not None and not is_run_main
         
         if not is_reloader:
+            import threading
             from core.agent.state import init_models
-            init_models()
+            threading.Thread(target=init_models, daemon=True).start()

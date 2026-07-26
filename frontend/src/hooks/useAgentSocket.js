@@ -6,11 +6,13 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
     const [isThinking, setIsThinking] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [activeStatus, setActiveStatus] = useState('idle');
+    const [permissionRequest, setPermissionRequest] = useState(null);
     
     const socketRef = useRef(null);
     const currentAudioRef = useRef(null);
     const audioQueueRef = useRef([]);
     const isStreamingRef = useRef(false); // true while receiving a new agent response
+    const isInterruptedRef = useRef(false); // true if user manually stopped playback
 
     const onReminderFiredRef = useRef(onReminderFired);
     useEffect(() => {
@@ -42,6 +44,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
     }, []);
 
     const stopSpeaking = useCallback(() => {
+      isInterruptedRef.current = true;
       audioQueueRef.current = [];
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
@@ -116,6 +119,8 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
             setIsThinking(false);
             setMessages(prev => [...prev, { role: 'user', text: data.message }]);
           } else if (data.chunk_type === 'audio') {
+              if (isInterruptedRef.current) return; // Drop audio if user stopped playback
+              
               const audioUrl = `data:audio/wav;base64,${data.message}`;
               audioQueueRef.current.push(audioUrl);
               
@@ -138,6 +143,8 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
                       body: data.body
                   });
               }
+          } else if (data.chunk_type === 'permission_request') {
+              setPermissionRequest(data.message);
           } else if (data.chunk_type === 'status') {
               setActiveStatus(data.message);
               if (data.message === 'acknowledged') {
@@ -203,6 +210,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
   const sendCommand = useCallback((text) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       stopSpeaking();
+      isInterruptedRef.current = false;
       // Optimistically add user message
       setMessages(prev => [...prev, { role: 'user', text }]);
       setIsThinking(true);
@@ -221,5 +229,16 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
     }
   }, []);
 
-  return { isConnected, messages, isThinking, isSpeaking, sendCommand, stopSpeaking, activeStatus, cancelTask };
+  const resolvePermissionRequest = useCallback((requestId, status) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ 
+        action: 'permission_response',
+        request_id: requestId,
+        status: status
+      }));
+      setPermissionRequest(null);
+    }
+  }, []);
+
+  return { isConnected, messages, isThinking, isSpeaking, sendCommand, stopSpeaking, activeStatus, cancelTask, permissionRequest, resolvePermissionRequest };
 }

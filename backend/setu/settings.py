@@ -173,7 +173,7 @@ ACCOUNT_EMAIL_VERIFICATION    = 'none'
 ACCOUNT_SIGNUP_FIELDS         = ['email*', 'username*', 'password1*', 'password2*']
 SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
 SOCIALACCOUNT_EMAIL_REQUIRED  = True
-ACCOUNT_ADAPTER = 'core.users.adapters.NoNewUsersAccountAdapter'
+ACCOUNT_ADAPTER = 'core.users.auth.NoNewUsersAccountAdapter'
 
 
 # ── REST Framework ────────────────────────────────────────────────────────
@@ -185,7 +185,7 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.ScopedRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'auth': '5/minute',
+        'auth': '60/minute',
     }
 }
 

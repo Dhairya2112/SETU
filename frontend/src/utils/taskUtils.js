@@ -56,6 +56,8 @@ export function deriveTasksFromMessages(messages, isThinking, isSpeaking, active
       lastTask.status = 'failed';
     } else if (activeStatus === 'done' && !isSpeaking) {
       lastTask.status = 'completed';
+    } else if (activeStatus === 'idle') {
+      lastTask.status = 'completed';
     } else {
       lastTask.status = 'running';
     }

@@ -69,6 +69,47 @@ def _log(tool_name: str, tool_input: str, tool_output: str, status: str) -> None
     except Exception:
         pass  # Never let logging break a tool
 
+def request_interactive_permission(target_path: str, action: str) -> bool:
+    """Pause the tool thread and ask the frontend user for permission."""
+    from core.users.models import User
+    from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
+    from core.agent.state import register_permission_request, get_permission_status, clear_permission_request
+    import uuid
+    
+    user_id = _get_user_id()
+    
+    # 1. Check trust mode
+    if user_id != "local":
+        user = User.objects(user_id=user_id).first()
+        if user and user.preferences and getattr(user.preferences, 'trust_mode', False):
+            return True
+            
+    # 2. Trigger interactive websocket prompt
+    request_id = uuid.uuid4().hex
+    event = register_permission_request(request_id)
+    channel_layer = get_channel_layer()
+    
+    async_to_sync(channel_layer.group_send)(
+        f'user_{user_id}',
+        {
+            'type': 'agent_message',
+            'chunk_type': 'permission_request',
+            'message': {
+                'request_id': request_id,
+                'path': str(target_path),
+                'action': action
+            }
+        }
+    )
+    
+    # 3. Block and wait for frontend (60s timeout)
+    event.wait(timeout=60)
+    status = get_permission_status(request_id)
+    clear_permission_request(request_id)
+    
+    return status == 'allowed'
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # 12.1  CORE SYSTEM TOOLS
@@ -539,9 +580,10 @@ def read_file(file_path: str) -> str:
         return PERMISSION_DENIED_MSG
 
     if not is_path_allowed(file_path, _get_user_id()):
-        msg = f"🚫 Access denied. File path '{file_path}' is outside the allowed directory."
-        _log("read_file", file_path, msg, "blocked")
-        return msg
+        if not request_interactive_permission(file_path, "read"):
+            msg = f"🚫 Access denied. User declined permission to read '{file_path}'."
+            _log("read_file", file_path, msg, "blocked")
+            return msg
 
     try:
         path = Path(file_path).resolve()
@@ -572,9 +614,10 @@ def write_file(file_path: str, content: str) -> str:
         return PERMISSION_DENIED_MSG
 
     if not is_path_allowed(file_path, _get_user_id()):
-        msg = f"🚫 Access denied. File path '{file_path}' is outside the allowed directory."
-        _log("write_file", file_path, msg, "blocked")
-        return msg
+        if not request_interactive_permission(file_path, "write/create"):
+            msg = f"🚫 Access denied. User declined permission to write to '{file_path}'."
+            _log("write_file", file_path, msg, "blocked")
+            return msg
 
     try:
         path = Path(file_path).resolve()
@@ -597,9 +640,10 @@ def search_files(directory: str, pattern: str = "*") -> str:
         return PERMISSION_DENIED_MSG
 
     if not is_path_allowed(directory, _get_user_id()):
-        msg = f"🚫 Access denied. Directory '{directory}' is outside the allowed directory."
-        _log("search_files", directory, msg, "blocked")
-        return msg
+        if not request_interactive_permission(directory, "search inside"):
+            msg = f"🚫 Access denied. User declined permission to search in '{directory}'."
+            _log("search_files", directory, msg, "blocked")
+            return msg
 
     try:
         search_path = Path(directory).resolve()
@@ -633,9 +677,10 @@ def list_directory(directory: str) -> str:
         return PERMISSION_DENIED_MSG
 
     if not is_path_allowed(directory, _get_user_id()):
-        msg = f"🚫 Access denied. Directory '{directory}' is outside the allowed directory."
-        _log("list_directory", directory, msg, "blocked")
-        return msg
+        if not request_interactive_permission(directory, "list contents of"):
+            msg = f"🚫 Access denied. User declined permission to view '{directory}'."
+            _log("list_directory", directory, msg, "blocked")
+            return msg
 
     try:
         path = Path(directory).resolve()
