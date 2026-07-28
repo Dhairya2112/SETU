@@ -169,3 +169,32 @@ body {
 .btn-secondary:active:not(:disabled) {
   transform: translateY(0);
 }
+
+/* Dashboard Semantic Classes */
+.badge-status {
+  @apply flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300;
+}
+
+.dot-indicator {
+  @apply w-1.5 h-1.5 rounded-full;
+}
+
+.brand-sidebar {
+  @apply absolute left-6 top-6 bottom-6 flex flex-col items-start z-50 pointer-events-none;
+}
+
+.brand-logo-wrapper {
+  @apply pointer-events-auto mb-10 group/brand flex items-center h-12 rounded-2xl w-12 hover:w-48 transition-all duration-300 ease-in-out bg-white/5 backdrop-blur-md border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.5)] overflow-hidden cursor-default;
+}
+
+.main-content-area {
+  @apply absolute left-24 lg:left-28 right-6 top-6 bottom-6 flex flex-col z-10 min-w-0 bg-transparent border-none shadow-none backdrop-blur-none overflow-hidden;
+}
+
+.ambient-gradient {
+  @apply absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#8052ff]/5 via-transparent to-transparent opacity-30 pointer-events-none;
+}
+
+.title-display {
+  @apply text-3xl lg:text-4xl font-extrabold text-white mb-2 tracking-tight select-none font-display z-10;
+}

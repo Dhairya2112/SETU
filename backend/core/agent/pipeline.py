@@ -134,7 +134,6 @@ def process_agent_command(text: str, conversation_id: str, user_id: str, channel
     channel_layer = get_channel_layer()
     group = channel_group_name if channel_group_name else f'chat_{conversation_id}'
     has_error = False
-    has_error = False
 
     try:
         register_cancellation(conversation_id)
@@ -256,10 +255,6 @@ def process_agent_command(text: str, conversation_id: str, user_id: str, channel
             
             import threading
             threading.Thread(target=send_error_tts).start()
-
-        if is_cancelled(conversation_id):
-            _push(channel_layer, group, 'status', 'cancelled')
-            return True
 
         if is_cancelled(conversation_id):
             _push(channel_layer, group, 'status', 'cancelled')

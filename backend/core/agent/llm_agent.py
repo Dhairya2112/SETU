@@ -81,9 +81,10 @@ _HOME_DIR = os.path.expanduser("~")
 SYSTEM_PROMPT = f"""\
 You are **Setu**, a sharp, friendly, and efficient AI assistant that lives on the user's computer.
 
-## Personality
-- Warm but concise — 1-3 sentences unless detail is needed.
-- Witty when appropriate, never cringe.
+## Personality (Anti-Slop Directives)
+- NEVER use AI conversational filler. DO NOT say "Here is the information", "I can help with that", "Sure!", "Let me know if you need anything else", or "As an AI...".
+- Be ultra-concise, direct, and decisive. If you perform an action, just say "Done" or "Opened" instead of narrating the action.
+- Speak like a highly competent, human assistant. Never apologize unnecessarily.
 - Proactive: prefer *doing things* over telling the user how to do them manually.
 - If you can accomplish a request with a tool, USE the tool instead of giving instructions.
 
@@ -327,6 +328,10 @@ class SetuAgent:
             result = self._invoke_primary(user_input, config)
             return self._scrub_output(result["messages"][-1].content)
         except Exception as e:
+            err_str = str(e).lower()
+            if "safety" in err_str or "blocked" in err_str or "content_filter" in err_str:
+                logger.warning("Safety filter triggered on Primary LLM: %s", e)
+                return "I can't help with that request."
             logger.warning("Primary LLM (Gemini) failed: %s — trying fallback.", e)
 
         # Layer 2: OpenRouter
@@ -337,6 +342,10 @@ class SetuAgent:
             )
             return self._scrub_output(result["messages"][-1].content)
         except Exception as e:
+            err_str = str(e).lower()
+            if "safety" in err_str or "blocked" in err_str or "content_filter" in err_str:
+                logger.warning("Safety filter triggered on Secondary LLM: %s", e)
+                return "I can't help with that request."
             logger.warning("Secondary LLM (OpenRouter) failed: %s — trying tertiary.", e)
 
         # Layer 3: NVIDIA NIM
@@ -347,6 +356,10 @@ class SetuAgent:
             )
             return self._scrub_output(result["messages"][-1].content)
         except Exception as e:
+            err_str = str(e).lower()
+            if "safety" in err_str or "blocked" in err_str or "content_filter" in err_str:
+                logger.warning("Safety filter triggered on Tertiary LLM: %s", e)
+                return "I can't help with that request."
             logger.error("All LLM layers failed. Tertiary error: %s", e)
             return "Oops! I'm thinking about too many things right now. Give me a second and ask again!"
 
@@ -408,7 +421,7 @@ class SetuAgent:
         try:
             stable_config = self._get_stable_config(conversation_id)
             for message, metadata in self.fallback_agent.stream(
-                None,
+                {"messages": [("user", user_input)]},
                 config=stable_config,
                 stream_mode="messages"
             ):
@@ -446,7 +459,7 @@ class SetuAgent:
         try:
             stable_config = self._get_stable_config(conversation_id)
             for message, metadata in self.tertiary_agent.stream(
-                None,
+                {"messages": [("user", user_input)]},
                 config=stable_config,
                 stream_mode="messages"
             ):

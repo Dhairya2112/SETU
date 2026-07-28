@@ -11,8 +11,8 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
     const socketRef = useRef(null);
     const currentAudioRef = useRef(null);
     const audioQueueRef = useRef([]);
-    const isStreamingRef = useRef(false); // true while receiving a new agent response
-    const isInterruptedRef = useRef(false); // true if user manually stopped playback
+    const isStreamingRef = useRef(false);
+    const isInterruptedRef = useRef(false);
 
     const onReminderFiredRef = useRef(onReminderFired);
     useEffect(() => {
@@ -61,11 +61,11 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
         headers: { 'Authorization': `Bearer ${token}` }
       })
         .then(res => {
-          if (!res.ok) return null; // 404 means new conversation, that's fine
+          if (!res.ok) return null;
           return res.json();
         })
         .then(data => {
-          if (data && data.messages && data.messages.length > 0) {
+          if (data?.messages?.length > 0) {
             const restored = data.messages.map((msg) => ({
               role: msg.role === 'user' ? 'user' : 'agent',
               text: msg.content
@@ -119,7 +119,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
             setIsThinking(false);
             setMessages(prev => [...prev, { role: 'user', text: data.message }]);
           } else if (data.chunk_type === 'audio') {
-              if (isInterruptedRef.current) return; // Drop audio if user stopped playback
+              if (isInterruptedRef.current) return;
               
               const audioUrl = `data:audio/wav;base64,${data.message}`;
               audioQueueRef.current.push(audioUrl);
@@ -128,7 +128,6 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
                   playNextAudio();
               }
           } else if (data.chunk_type === 'reminder') {
-              // Acknowledge the reminder by deleting/completing it on the backend
               fetch(`http://${window.location.hostname}:8000/api/v1/reminders/${data.reminder_id}/`, {
                   method: 'DELETE',
                   headers: {
@@ -147,15 +146,8 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
               setPermissionRequest(data.message);
           } else if (data.chunk_type === 'status') {
               setActiveStatus(data.message);
-              if (data.message === 'acknowledged') {
-                  // Instant ack — Setu heard the command (< 200ms)
-                  setIsThinking(true);
-                  isStreamingRef.current = false;
-              } else if (data.message === 'thinking') {
-                  setIsThinking(true);
-                  isStreamingRef.current = false;
-              } else if (data.message === 'done' || data.message === 'cancelled' || data.message === 'failed') {
-                  setIsThinking(false);
+              if (['acknowledged', 'thinking', 'done', 'cancelled', 'failed'].includes(data.message)) {
+                  setIsThinking(data.message === 'acknowledged' || data.message === 'thinking');
                   isStreamingRef.current = false;
               }
           }
@@ -171,8 +163,6 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
 
           if (isManualCleanup) return;
 
-          // If unauthorized (4001), do not automatically reconnect with same token.
-          // Let the background token refresh handler in App.tsx refresh the token.
           if (event.code === 4001) {
             console.warn("WebSocket closed due to unauthorized token (4001). Reconnection skipped.");
             return;
@@ -208,15 +198,12 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
     }, [token, conversationId]);
 
   const sendCommand = useCallback((text) => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
       stopSpeaking();
       isInterruptedRef.current = false;
-      // Optimistically add user message
       setMessages(prev => [...prev, { role: 'user', text }]);
       setIsThinking(true);
       setActiveStatus('running');
-      
-      // Send to backend Celery worker
       socketRef.current.send(JSON.stringify({ text }));
     } else {
       console.error("WebSocket is not open.");
@@ -224,13 +211,13 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
   }, []);
 
   const cancelTask = useCallback(() => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: 'cancel' }));
     }
   }, []);
 
   const resolvePermissionRequest = useCallback((requestId, status) => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ 
         action: 'permission_response',
         request_id: requestId,

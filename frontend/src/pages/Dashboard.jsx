@@ -297,10 +297,10 @@ export function Dashboard() {
     <div className="w-full h-full relative overflow-hidden bg-transparent">
 
       {/* Floating Translucent Icon Sidebar */}
-      <aside className="absolute left-6 top-6 bottom-6 flex flex-col items-start z-50 pointer-events-none">
+      <aside className="brand-sidebar">
 
         {/* Brand Icon floating */}
-        <div className="pointer-events-auto mb-10 group/brand flex items-center h-12 rounded-2xl w-12 hover:w-48 transition-all duration-300 ease-in-out bg-white/5 backdrop-blur-md border border-white/10 shadow-[0_0_20px_rgba(0,0,0,0.5)] overflow-hidden cursor-default">
+        <div className="brand-logo-wrapper">
           <div className="w-12 h-12 flex items-center justify-center shrink-0">
             <SetuLogo size={20} />
           </div>
@@ -350,7 +350,7 @@ export function Dashboard() {
       </aside>
 
       {/* Main Workspace Area - Transparent everywhere to keep Neural Mesh visible */}
-      <main className="absolute left-24 lg:left-28 right-6 top-6 bottom-6 flex flex-col z-10 min-w-0 bg-transparent border-none shadow-none backdrop-blur-none overflow-hidden">
+      <main className="main-content-area">
 
         {/* Content Tabs Wrapper */}
         <div className="flex-1 flex flex-col relative w-full h-full overflow-hidden">
@@ -372,28 +372,28 @@ export function Dashboard() {
                 {!showTaskStream ? (
                   /* Idle Centered State */
                   <div className="flex-1 flex flex-col items-center justify-center text-center relative p-6 lg:p-10 w-full max-w-4xl mx-auto min-h-0">
-                    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#8052ff]/5 via-transparent to-transparent opacity-30 pointer-events-none"></div>
+                    <div className="ambient-gradient"></div>
 
                     {/* Top Telemetry Badges Strip */}
                     <div className="flex flex-wrap items-center justify-center gap-3 mb-6 select-none z-20 relative">
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300" title={profile?.preferences?.llm_model || ''}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#8052ff]"></span>
+                      <div className="badge-status" title={profile?.preferences?.llm_model || ''}>
+                        <span className="dot-indicator bg-[#8052ff]"></span>
                         <span className="text-zinc-500">LLM:</span>
                         <span className="font-semibold">{aiProviderFormatted}</span>
                       </div>
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300">
-                        <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                      <div className="badge-status">
+                        <span className="dot-indicator bg-purple-400"></span>
                         <span className="text-zinc-500">TTS:</span>
                         <span className="font-semibold">Kokoro</span>
                       </div>
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-mint)]"></span>
+                      <div className="badge-status">
+                        <span className="dot-indicator bg-[var(--color-accent-mint)]"></span>
                         <span className="text-zinc-500">Mic Energy:</span>
                         <span className="font-semibold">{Math.floor(audioLevel * 100)}%</span>
                       </div>
                     </div>
 
-                    <h2 className="text-3xl lg:text-4xl font-extrabold text-white mb-2 tracking-tight select-none font-display z-10">
+                    <h2 className="title-display">
                       {isSpeaking ? "Setu is speaking" : isActive ? "I'm listening..." : "Awaiting Command"}
                     </h2>
                     <p className="text-zinc-400 text-sm max-w-sm mx-auto mb-10 select-none z-10 h-5 flex items-center justify-center">
@@ -478,22 +478,22 @@ export function Dashboard() {
 
                     {/* Left Column - Voice Orb centerpiece (5 cols) */}
                     <div className="lg:col-span-5 flex flex-col items-center justify-center text-center relative min-h-0">
-                      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#8052ff]/5 via-transparent to-transparent opacity-30 pointer-events-none"></div>
+                      <div className="ambient-gradient"></div>
 
                       {/* Top Telemetry Badges Strip */}
                       <div className="flex flex-wrap items-center justify-center gap-3 mb-6 select-none z-20 relative">
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300" title={profile?.preferences?.llm_model || ''}>
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#8052ff]"></span>
+                        <div className="badge-status" title={profile?.preferences?.llm_model || ''}>
+                          <span className="dot-indicator bg-[#8052ff]"></span>
                           <span className="text-zinc-500">LLM:</span>
                           <span className="font-semibold">{aiProviderFormatted}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300">
-                          <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                        <div className="badge-status">
+                          <span className="dot-indicator bg-purple-400"></span>
                           <span className="text-zinc-500">TTS:</span>
                           <span className="font-semibold">Kokoro</span>
                         </div>
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.02] border border-white/5 font-mono text-[10px] text-zinc-300">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent-mint)]"></span>
+                        <div className="badge-status">
+                          <span className="dot-indicator bg-[var(--color-accent-mint)]"></span>
                           <span className="text-zinc-500">Mic Energy:</span>
                           <span className="font-semibold">{Math.floor(audioLevel * 100)}%</span>
                         </div>
