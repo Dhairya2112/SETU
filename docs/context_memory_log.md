@@ -361,3 +361,17 @@ This log tracks every modification, cleanup, and feature implementation in detai
   - **WebSocket Audio Interruption Fix**: Fixed a race condition where the frontend instantly dropped incoming audio chunks from the server. Restructured `sendCommand()` so that it properly stops previous audio without permanently flagging the current session as interrupted.
   - **Task Status Refresh Bug**: Patched `deriveTasksFromMessages` in `taskUtils.js` to explicitly handle the `'idle'` status, ensuring that historical conversation tasks accurately show up as `COMPLETED` on page refresh instead of erroneously defaulting to `RUNNING`.
 - **Status**: Backend worker thread deadlocks are fully resolved. UI states correctly map to the user's audio and historical data, and the dashboard design is more refined.
+
+---
+
+## 📅 July 29, 2026
+
+### 🕒 12:35 AM | Build & Auth Loop Stabilization
+- **Target Files**:
+  - `frontend/src/index.css`
+  - `frontend/src/pages/Dashboard.jsx`
+  - `frontend/src/App.jsx`
+- **Actions**:
+  - **Tailwind v4 Compile Fix**: Resolved Vite `Pre-transform error: Cannot apply unknown utility class 'group/brand'` by removing the named group from the `@apply` directive in `index.css` and applying the class directly to the HTML element in `Dashboard.jsx`.
+  - **Auth Throttle Infinite Loop**: Fixed a critical frontend race condition in `App.jsx` where `refreshToken` was included in the dependency array of the periodic refresh `useEffect`. When the server booted, the app would receive a new rotating refresh token, triggering the hook continuously and instantly exhausting the backend `auth` throttle limit (60 req/min), resulting in a global IP block (429 Too Many Requests) on login attempts.
+- **Status**: Vite builds cleanly. The auth pipeline is stable and no longer triggers infinite background requests.

@@ -55,7 +55,7 @@ function App() {
 
   // Periodic refresh loop + initial refresh on boot
   useEffect(() => {
-    if (!refreshToken) return;
+    if (!refreshTokenRef.current) return;
 
     // Refresh immediately on load if we have a refresh token
     refreshAccessToken();
@@ -66,7 +66,7 @@ function App() {
     }, 600000);
 
     return () => clearInterval(interval);
-  }, [refreshToken, refreshAccessToken]);
+  }, [refreshAccessToken]);
 
   const handleLoginSuccess = (newToken, newRefreshToken) => {
     setToken(newToken);

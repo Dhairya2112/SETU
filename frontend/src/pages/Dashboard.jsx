@@ -300,7 +300,7 @@ export function Dashboard() {
       <aside className="brand-sidebar">
 
         {/* Brand Icon floating */}
-        <div className="brand-logo-wrapper">
+        <div className="brand-logo-wrapper group/brand">
           <div className="w-12 h-12 flex items-center justify-center shrink-0">
             <SetuLogo size={20} />
           </div>
