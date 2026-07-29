@@ -1,5 +1,5 @@
 """
-Setu Tier 0 — Fast Response Router (Step 14.6.1)
+Setu Tier 0 — Fast Response Router
 
 Regex/keyword matcher that intercepts trivial commands (greetings, farewells,
 thanks, etc.) BEFORE the LLM pipeline. Returns a pre-defined response in < 0.3s.

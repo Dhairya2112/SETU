@@ -39,7 +39,56 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_add(self.user_group_name, self.channel_name)
         await self.accept()
 
+        # Extract User-Agent for device name
+        user_agent = ""
+        ua_model = ""
+        for header, value in self.scope.get('headers', []):
+            if header == b'user-agent':
+                user_agent = value.decode('utf-8')
+            elif header == b'sec-ch-ua-model':
+                ua_model = value.decode('utf-8').strip('"')
+        
+        device_name = "Mobile Remote"
+        if "iPhone" in user_agent:
+            device_name = "iPhone"
+        elif "iPad" in user_agent:
+            device_name = "iPad"
+        elif "Android" in user_agent:
+            device_name = "Android Device"
+            if "Samsung" in user_agent or "SM-" in user_agent or "S2" in ua_model or "SM-" in ua_model or "Samsung" in ua_model:
+                device_name = "Samsung Device"
+            elif "Pixel" in user_agent or "Pixel" in ua_model:
+                device_name = "Google Pixel"
+            elif ua_model:
+                device_name = f"Android ({ua_model})"
+        
+        self.device_name = device_name
+
+        # Broadcast device connection status
+        is_mobile = (self.conversation_id == 'mobile-remote-session')
+        await self.channel_layer.group_send(
+            self.user_group_name,
+            {
+                'type': 'device_status',
+                'device': 'mobile' if is_mobile else 'desktop',
+                'status': 'connected',
+                'device_name': self.device_name if is_mobile else 'Primary Desktop'
+            }
+        )
+
     async def disconnect(self, close_code):
+        is_mobile = (getattr(self, 'conversation_id', '') == 'mobile-remote-session')
+        if hasattr(self, 'user_group_name'):
+            await self.channel_layer.group_send(
+                self.user_group_name,
+                {
+                    'type': 'device_status',
+                    'device': 'mobile' if is_mobile else 'desktop',
+                    'status': 'disconnected',
+                    'device_name': getattr(self, 'device_name', 'Mobile Remote') if is_mobile else 'Primary Desktop'
+                }
+            )
+
         if hasattr(self, 'room_group_name'):
             await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
         if hasattr(self, 'user_group_name'):
@@ -54,7 +103,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
         if text_data:
             data = json.loads(text_data)
             
-            # Handle user cancellation request (Step 14.1)
+            # Handle user cancellation request
             if data.get('type') == 'cancel' or data.get('action') == 'cancel':
                 from core.agent.state import cancel_active_command
                 cancel_active_command(self.conversation_id)
@@ -72,6 +121,15 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                 status = data.get('status')
                 if request_id and status:
                     resolve_permission_request(request_id, status)
+                return
+
+            if data.get('action') == 'ping_devices':
+                await self.channel_layer.group_send(
+                    self.user_group_name,
+                    {
+                        'type': 'device_ping'
+                    }
+                )
                 return
 
             command_text = data.get('text')
@@ -201,7 +259,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                     }))
 
             elif command_text:
-                # ── Instant acknowledgment (Step 14.6.3) ──────────────────
+                # ── Instant acknowledgment ──────────────────
                 # Send immediately so the user knows Setu heard them (~200ms)
                 await self.send(text_data=json.dumps({
                     'chunk_type': 'status',
@@ -227,7 +285,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
             'message': event['message']
         }))
 
-    # ── Handler: reminder fired by background scheduler (Step 13) ──
+    # ── Handler: reminder fired by background scheduler ──
     async def reminder_notification(self, event):
         await self.send(text_data=json.dumps({
             'chunk_type': 'reminder',
@@ -235,3 +293,26 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
             'title': event['title'],
             'body': event['body'],
         }))
+
+    # ── Handler: device status broadcast ──
+    async def device_status(self, event):
+        await self.send(text_data=json.dumps({
+            'chunk_type': 'device_status',
+            'device': event['device'],
+            'status': event['status'],
+            'device_name': event.get('device_name', 'Mobile Remote')
+        }))
+
+    # ── Handler: ping request to broadcast status ──
+    async def device_ping(self, event):
+        is_mobile = (getattr(self, 'conversation_id', '') == 'mobile-remote-session')
+        await self.channel_layer.group_send(
+            self.user_group_name,
+            {
+                'type': 'device_status',
+                'device': 'mobile' if is_mobile else 'desktop',
+                'status': 'connected',
+                'device_name': getattr(self, 'device_name', 'Mobile Remote') if is_mobile else 'Primary Desktop'
+            }
+        )
+

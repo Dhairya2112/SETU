@@ -1,7 +1,8 @@
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Login } from './components/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Onboarding } from './pages/Onboarding';
+import { MobileChat } from './pages/MobileChat';
 import { NeuralMesh } from './components/NeuralMesh';
 import { TitleBar } from './components/TitleBar';
 import { useAppStore } from './store/useAppStore';
@@ -10,6 +11,7 @@ import { useEffect, useCallback, useRef } from 'react';
 
 function App() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { refreshToken, setToken, setRefreshToken, logout, onboardingCompleted } = useAppStore();
 
   const isRefreshingRef = useRef(false);
@@ -78,7 +80,8 @@ function App() {
     <div 
       className="flex flex-col h-screen w-screen overflow-hidden bg-[#030303] text-[var(--color-text-primary)] relative border border-white/10 select-none"
     >
-      <TitleBar />
+      {/* Do not render desktop TitleBar on mobile interface */}
+      {location.pathname !== '/mobile' && <TitleBar />}
       <div className="flex-1 relative z-10 w-full flex overflow-hidden">
         <NeuralMesh />
         <Routes>
@@ -86,6 +89,7 @@ function App() {
           <Route path="/auth" element={<Login onLoginSuccess={handleLoginSuccess} />} />
           <Route path="/onboarding/*" element={<Onboarding />} />
           <Route path="/dashboard/*" element={<Dashboard />} />
+          <Route path="/mobile" element={<MobileChat />} />
         </Routes>
       </div>
     </div>

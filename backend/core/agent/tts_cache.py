@@ -1,5 +1,5 @@
 """
-Setu TTS Audio Cache (Step 14.6.2)
+Setu TTS Audio Cache
 
 Pre-generates and caches TTS audio for common Tier 0 fast responses.
 Eliminates 1–2s of TTS generation latency for cached phrases.

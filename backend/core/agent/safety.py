@@ -1,75 +1,99 @@
-"""
-Step 12.3 — Command Safety Layer
-
-Three layers of defence:
-  1. Command Blacklist  — Regex-matched patterns that must NEVER execute.
-  2. Path Sandboxing    — File tools restricted to user home directory.
-  3. Output Sanitization — Truncate large outputs to prevent context overflow.
-"""
 
 import re
 import platform
 from pathlib import Path
 
 # ── 1. Command Blacklist ────────────────────────────────────────────────
-# Patterns are case-insensitive. Each entry is compiled once at import.
-
-_BLACKLIST_PATTERNS: list[str] = [
-    # ── Linux / macOS destructive ──
-    r"rm\s+-rf\s+/",
-    r"rm\s+-rf\s+~",
-    r"rm\s+--no-preserve-root",
-    r"mkfs\b",
-    r"dd\s+if=",
-    r":\(\)\{\s*:\|:\&\s*\};:",           # fork bomb
-    r"\bshutdown\b",
-    r"\breboot\b",
-    r"init\s+[0-6]",
-    r"chmod\s+-R\s+777\s+/",
-    r">\s*/dev/sd[a-z]",
-    r"mv\s+.+\s+/dev/null",
-
-    # ── Windows destructive ──
-    r"format\s+[a-zA-Z]:",
-    r"del\s+/[fFsSqQ]",
-    r"rd\s+/[sS]\s+/[qQ]",
-    r"rmdir\s+/[sS]\s+/[qQ]",
-    r"reg\s+delete",
-    r"reg\s+add.*\/f",
-    r"\bbcdedit\s+/(?:set|delete)\b",
-    r"diskpart",
-    r"cipher\s+/w:",
-    r"net\s+user\s+.*\s+/delete",
-    r"net\s+stop",
-    r"powershell.*-enc",                   # encoded commands (obfuscation)
-    r"powershell.*downloadstring",         # remote code execution
-    r"powershell.*iex\s*\(",               # invoke-expression
-
-    # ── Cross-platform network-dangerous ──
-    r"curl.*\|\s*(ba)?sh",                 # pipe-to-shell
-    r"wget.*\|\s*(ba)?sh",
-    r"nc\s+-[le]",                         # netcat listeners
-    r"ncat\s+-[le]",
-]
-
-_COMPILED_BLACKLIST = [
-    re.compile(p, re.IGNORECASE) for p in _BLACKLIST_PATTERNS
-]
-
+# No regex, purely token-based safety matching.
 
 def is_command_blocked(command: str) -> bool:
-    """Return True if `command` matches any blacklisted pattern."""
-    for pattern in _COMPILED_BLACKLIST:
-        if pattern.search(command):
+    """Return True if `command` matches any blacklisted action."""
+    cmd_lower = command.lower()
+    
+    # Block suspicious piping globally (curl/wget | bash)
+    if "|" in cmd_lower:
+        if any(shell in cmd_lower for shell in ["bash", "sh", "cmd", "powershell"]):
             return True
+            
+    # Normalize command for safe tokenization across multiple chained commands and subshells
+    for op in ["&&", "||", "&", ";", "\n", "|", "$(", ")", "`"]:
+        cmd_lower = cmd_lower.replace(op, " \n ")
+        
+    sub_commands = cmd_lower.split("\n")
+    
+    for sub_cmd in sub_commands:
+        tokens = sub_cmd.split()
+        if not tokens:
+            continue
+            
+        # Skip benign command wrappers to expose the true root command
+        wrapper_cmds = {"env", "nohup", "time", "xargs", "watch", "timeout"}
+        
+        root_idx = 0
+        root_cmd = ""
+        while root_idx < len(tokens):
+            # Extract the root command and strip quote obfuscation (e.g. r""m -> rm)
+            root_cmd = tokens[root_idx].replace('"', '').replace("'", "")
+            
+            # Strip paths (e.g. c:/windows/system32/format.exe -> format.exe)
+            root_cmd = root_cmd.replace("\\", "/").split("/")[-1]
+            
+            # Strip extensions (e.g. format.exe -> format)
+            if root_cmd.endswith(".exe") or root_cmd.endswith(".com"):
+                root_cmd = root_cmd[:-4]
+                
+            if root_cmd in wrapper_cmds:
+                root_idx += 1
+            elif root_cmd in ["sudo", "su", "eval", "exec"]:
+                return True # Always immediately block superuser or execution-eval wrappers
+            else:
+                break
+                
+        if root_idx >= len(tokens):
+            continue
+        
+        # Block destructive file removal
+        if root_cmd in ["rm", "remove-item"]:
+            if any(flag in tokens for flag in ["-rf", "-r", "-f", "--no-preserve-root", "-recurse", "-force"]):
+                return True
+        
+        # Block Windows deletion
+        if root_cmd in ["del", "rd", "rmdir"]:
+            if any(flag in tokens for flag in ["/f", "/s", "/q", "-force"]):
+                return True
+                
+        # Block disk/system manipulation
+        if root_cmd in ["format", "mkfs", "diskpart", "dd", "bcdedit", "cipher"]:
+            return True
+            
+        # Block shutdown/reboot
+        if root_cmd in ["shutdown", "reboot", "init"]:
+            return True
+                    
+        # Block obfuscated/remote powershell execution
+        if root_cmd == "powershell":
+            if any(flag in tokens for flag in ["-enc", "-encodedcommand", "downloadstring", "iex"]):
+                return True
+                
+        # Block netcat listeners
+        if root_cmd in ["nc", "ncat"]:
+            if any(flag in tokens for flag in ["-l", "-e", "-p"]):
+                return True
+                
+        # Block network service disruption
+        if root_cmd == "net" and len(tokens) >= 2:
+            if tokens[1] == "stop":
+                return True
+            if "/delete" in tokens:
+                return True
+            
     return False
 
 
 def get_blocked_reason(command: str) -> str | None:
-    """Return the matched pattern string if blocked, else None."""
-    for pattern in _COMPILED_BLACKLIST:
-        if pattern.search(command):
-            return pattern.pattern
+    """Return a descriptive reason if blocked, else None."""
+    if is_command_blocked(command):
+        return "Command matches restricted token pattern (destructive action blocked)."
     return None
 
 
@@ -114,7 +138,7 @@ def is_path_allowed(target_path: str, user_id: str = None) -> bool:
     user-configured whitelisted directory, and not inside a protected system directory or dotfile path.
     """
     try:
-        resolved = Path(target_path).resolve()
+        resolved = Path(target_path).expanduser().resolve()
     except (OSError, ValueError):
         return False
 
@@ -148,9 +172,18 @@ def is_path_allowed(target_path: str, user_id: str = None) -> bool:
                     pass
             return False
 
-    # Check against home directory first
+    # If running in local CLI mode, grant full home directory access
+    if user_id == "local":
+        if _is_subpath(resolved, Path.home()):
+            return True
+        return False
+        
+    # Check against home directory sandbox first
     sandbox = _get_sandbox_root()
-    if _is_subpath(resolved, sandbox):
+    desktop = Path.home() / "Desktop"
+    data_dir = Path.home() / "SETU" / "Data"
+    
+    if _is_subpath(resolved, sandbox) or _is_subpath(resolved, desktop) or _is_subpath(resolved, data_dir):
         return True
 
     # Check against user's whitelisted paths from MongoDB
@@ -158,14 +191,22 @@ def is_path_allowed(target_path: str, user_id: str = None) -> bool:
         from core.users.models import User
         try:
             user = User.objects(user_id=user_id).first()
-            if user and user.preferences and user.preferences.whitelisted_paths:
-                for wpath in user.preferences.whitelisted_paths:
-                    try:
-                        wpath_resolved = Path(wpath).resolve()
-                        if _is_subpath(resolved, wpath_resolved):
-                            return True
-                    except (OSError, ValueError):
-                        pass
+            if user and user.preferences:
+                # Global Full Disk Access Check
+                if getattr(user.preferences, 'full_disk_access', False):
+                    # For safety, ensure it's at least within the user's home directory across all OS
+                    if _is_subpath(resolved, Path.home()):
+                        return True
+                        
+                # Specific Whitelisted Paths Check
+                if user.preferences.whitelisted_paths:
+                    for wpath in user.preferences.whitelisted_paths:
+                        try:
+                            wpath_resolved = Path(wpath).resolve()
+                            if _is_subpath(resolved, wpath_resolved):
+                                return True
+                        except (OSError, ValueError):
+                            pass
         except Exception:
             pass  # Fallback to home sandbox if DB query fails
 

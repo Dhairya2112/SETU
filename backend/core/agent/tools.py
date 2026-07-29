@@ -1,16 +1,3 @@
-"""
-Step 12.1 / 12.2 — OS-Level & File System Tool Registration
-
-All LangChain @tool functions that give Setu actual agency over the
-operating system.  Each tool:
-  1. Checks permission level via permissions.py
-  2. Validates safety via safety.py
-  3. Logs execution via models.py CommandLog
-  4. Returns sanitized output
-
-Tools are designed to receive `user_id` and `conversation_id` through
-a thread-local context variable set before the agent runs.
-"""
 
 import os
 import sys
@@ -200,8 +187,12 @@ def _open_drive_explorer(drive_path: str, app_name: str) -> str:
 
 
 @tool
-def open_application(app_name: str) -> str:
-    """Open an application by name (e.g., 'chrome', 'notepad', 'code', 'spotify'). Requires Level 2 permission."""
+def open_application(app_name: str, file_path: str = "") -> str:
+    """
+    Open a desktop application by name (e.g., 'chrome', 'notepad', 'code', 'spotify'). Requires Level 2 permission.
+    If you want to open a specific file or URL in the application, provide it in the optional `file_path` argument.
+    CRITICAL: Do NOT use this tool if the user wants to automate the web (e.g., 'play a video on youtube', 'search google'). Use `auto_browse` for that instead. Only use this if they just want the app opened and nothing else.
+    """
     if not check_permission(_get_user_id(), required_level=2):
         _log("open_application", app_name, PERMISSION_DENIED_MSG, "denied")
         return PERMISSION_DENIED_MSG
@@ -213,50 +204,61 @@ def open_application(app_name: str) -> str:
         return msg
 
     name_lower = app_name.strip().lower()
-
-    # ── Drive Resolver Check ──
-    # 1. Resolve by volume label (e.g. "luffy drive" -> search label "luffy")
-    label_match = re.search(r'\b([a-z0-9_\-\s]+)\s+drive\b', name_lower)
-    if label_match:
-        label = label_match.group(1).strip()
+    
+    # ── Drive Resolver Check (No Regex) ──
+    words = name_lower.replace("\\", "").split()
+    
+    # 1. Direct drive letter (e.g. "c:", "c drive", "drive c")
+    letter = None
+    if len(words) == 1 and words[0].endswith(":"):
+        possible_letter = words[0][:-1]
+        if len(possible_letter) == 1 and possible_letter.isalpha():
+            letter = possible_letter
+    elif len(words) == 2 and "drive" in words:
+        possible_letter = words[0] if words[1] == "drive" else words[1]
+        if len(possible_letter) == 1 and possible_letter.isalpha():
+            letter = possible_letter
+            
+    if letter:
+        drive_path = f"{letter.upper()}:\\"
+        if os.path.exists(drive_path):
+            return _open_drive_explorer(drive_path, app_name)
+            
+    # 2. Volume label (e.g. "luffy drive")
+    if name_lower.endswith(" drive") and len(name_lower) > 6:
+        label = name_lower[:-6].strip()
         if len(label) > 1:
             drive_path = find_drive_by_label(label)
             if drive_path:
                 return _open_drive_explorer(drive_path, app_name)
 
-    # 2. Resolve by direct drive letter (e.g. "a drive", "drive a", "a:", "a:\")
-    drive_match = re.search(r'\b([a-z])\s*drive\b|\bdrive\s*([a-z])\b|\b([a-z]):', name_lower)
-    if drive_match:
-        letter = next(g for g in drive_match.groups() if g is not None).upper()
-        drive_path = f"{letter}:\\"
-        if os.path.exists(drive_path):
-            return _open_drive_explorer(drive_path, app_name)
-
-    # Map common names to actual executables
+    # Map common names to actual executables or macOS App names
     app_aliases: dict[str, list[str]] = {
         # Browsers
-        "chrome": ["chrome", "google-chrome", "google-chrome-stable"],
-        "firefox": ["firefox"],
-        "edge": ["msedge", "microsoft-edge"],
-        "brave": ["brave", "brave-browser"],
+        "chrome": ["Google Chrome", "chrome", "google-chrome", "google-chrome-stable"],
+        "firefox": ["Firefox", "firefox"],
+        "edge": ["Microsoft Edge", "msedge", "microsoft-edge"],
+        "brave": ["Brave Browser", "brave", "brave-browser"],
+        "safari": ["Safari", "safari"],
         # Dev tools
-        "code": ["code"],
-        "vscode": ["code"],
-        "vs code": ["code"],
-        "terminal": ["wt", "cmd"] if platform.system() == "Windows" else ["gnome-terminal", "x-terminal-emulator"],
+        "code": ["Visual Studio Code", "code"],
+        "vscode": ["Visual Studio Code", "code"],
+        "vs code": ["Visual Studio Code", "code"],
+        "terminal": ["Terminal", "iterm", "wt", "cmd"] if platform.system() in ["Windows", "Darwin"] else ["gnome-terminal", "x-terminal-emulator"],
         # System
-        "notepad": ["notepad"] if platform.system() == "Windows" else ["gedit", "nano"],
-        "calculator": ["calc"] if platform.system() == "Windows" else ["gnome-calculator"],
-        "file explorer": ["explorer"] if platform.system() == "Windows" else ["nautilus"],
-        "explorer": ["explorer"] if platform.system() == "Windows" else ["nautilus"],
-        "files": ["explorer"] if platform.system() == "Windows" else ["nautilus"],
+        "notepad": ["TextEdit", "notepad"] if platform.system() in ["Windows", "Darwin"] else ["gedit", "nano"],
+        "calculator": ["Calculator", "calc"] if platform.system() in ["Windows", "Darwin"] else ["gnome-calculator"],
+        "file explorer": ["Finder", "explorer"] if platform.system() in ["Windows", "Darwin"] else ["nautilus"],
+        "explorer": ["Finder", "explorer"] if platform.system() in ["Windows", "Darwin"] else ["nautilus"],
+        "files": ["Finder", "explorer"] if platform.system() in ["Windows", "Darwin"] else ["nautilus"],
         # Media
-        "spotify": ["spotify"],
-        "vlc": ["vlc"],
+        "spotify": ["Spotify", "spotify"],
+        "vlc": ["VLC", "vlc"],
         # Communication
-        "discord": ["discord"],
-        "slack": ["slack"],
-        "teams": ["teams", "msteams"],
+        "discord": ["Discord", "discord"],
+        "slack": ["Slack", "slack"],
+        "teams": ["Microsoft Teams", "teams", "msteams"],
+        "whatsapp": ["WhatsApp", "whatsapp"],
     }
 
     # Check if this is a website URL or a common web destination
@@ -332,22 +334,49 @@ def open_application(app_name: str) -> str:
                             resolved = candidate
                         else:
                             continue
+                    cmd = f'"{resolved}"' if resolved != candidate else resolved
+                    if file_path:
+                        cmd += f' "{file_path}"'
                     subprocess.Popen(
-                        f'"{resolved}"' if resolved != candidate else resolved,
+                        cmd,
                         shell=True,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                     )
+                elif platform.system() == "Darwin":
+                    # On Mac, 'open -a' is the native way to launch apps by name
+                    cmd_args = ["open", "-a", candidate]
+                    if file_path:
+                        cmd_args.append(file_path)
+                    res = subprocess.run(
+                        cmd_args,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    if res.returncode != 0:
+                        cmd_args_fallback = ["open", "-a", app_name]
+                        if file_path:
+                            cmd_args_fallback.append(file_path)
+                        res_fallback = subprocess.run(
+                            cmd_args_fallback,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                        if res_fallback.returncode != 0:
+                            continue
                 else:
+                    cmd_args = [candidate]
+                    if file_path:
+                        cmd_args.append(file_path)
                     subprocess.Popen(
-                        [candidate],
+                        cmd_args,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                     )
                 result = f"Opened {app_name} successfully."
                 _log("open_application", app_name, result, "success")
                 return result
-            except FileNotFoundError:
+            except (FileNotFoundError, subprocess.CalledProcessError):
                 continue
 
         result = f"Could not find application '{app_name}'. Make sure it's installed and in your PATH."
@@ -538,7 +567,10 @@ def control_volume(action: str) -> str:
 
 @tool
 def web_search(query: str) -> str:
-    """Search the web using DuckDuckGo and return top results. Safe, Level 1 tool."""
+    """
+    Search the web using DuckDuckGo. 
+    CRITICAL WARNING: This tool is currently broken and unreliable. Do NOT use this tool. You MUST use the `gather_information` tool instead for all searching, gathering, or researching tasks.
+    """
     try:
         from duckduckgo_search import DDGS
     except ImportError:
@@ -574,7 +606,7 @@ def web_search(query: str) -> str:
 
 @tool
 def read_file(file_path: str) -> str:
-    """Read the contents of a local file. Requires Level 2 permission. Path must be in user home directory."""
+    """Read the contents of a local file. Requires Level 2 permission. If the user does not specify a folder, ALWAYS assume the file is in '~/SETU/Data/' (e.g., '~/SETU/Data/demo.txt'). ONLY use other paths like '~/Desktop/' if explicitly requested."""
     if not check_permission(_get_user_id(), required_level=2):
         _log("read_file", file_path, PERMISSION_DENIED_MSG, "denied")
         return PERMISSION_DENIED_MSG
@@ -608,7 +640,7 @@ def read_file(file_path: str) -> str:
 
 @tool
 def write_file(file_path: str, content: str) -> str:
-    """Create or overwrite a file with the given content. Requires Level 2 permission. Path must be in user home directory."""
+    """Create or overwrite a file with the given content. Requires Level 2 permission. If the user does not specify a folder, ALWAYS save to '~/SETU/Data/' (e.g., '~/SETU/Data/demo.txt'). ONLY use other paths like '~/Desktop/' if explicitly requested."""
     if not check_permission(_get_user_id(), required_level=2):
         _log("write_file", file_path, PERMISSION_DENIED_MSG, "denied")
         return PERMISSION_DENIED_MSG
@@ -670,8 +702,8 @@ def search_files(directory: str, pattern: str = "*") -> str:
 
 
 @tool
-def list_directory(directory: str) -> str:
-    """List all files and folders in a given directory. Requires Level 2 permission."""
+def list_directory(directory: str = "~/SETU/Data/") -> str:
+    """List all files and folders in a directory. Requires Level 2 permission. If the user does not specify a folder, ALWAYS use '~/SETU/Data/'. ONLY use other paths if explicitly requested."""
     if not check_permission(_get_user_id(), required_level=2):
         _log("list_directory", directory, PERMISSION_DENIED_MSG, "denied")
         return PERMISSION_DENIED_MSG
@@ -683,7 +715,7 @@ def list_directory(directory: str) -> str:
             return msg
 
     try:
-        path = Path(directory).resolve()
+        path = Path(directory).expanduser().resolve()
         if not path.exists():
             msg = f"Directory not found: {directory}"
             _log("list_directory", directory, msg, "error")
@@ -718,7 +750,7 @@ def list_directory(directory: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 13.3  REMINDER TOOL (Step 13)
+# 13.3  REMINDER TOOL
 # ─────────────────────────────────────────────────────────────────────────
 
 @tool
@@ -790,7 +822,7 @@ def set_reminder(title: str, remind_at: str, description: str = "") -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# 18.2  BROWSER AUTOMATION TOOLS (Step 18)
+# 18.2  BROWSER AUTOMATION TOOLS
 # ─────────────────────────────────────────────────────────────────────────
 
 from .browser import BrowserManager
@@ -854,6 +886,12 @@ def get_page_content(query: str = "") -> str:
         return PERMISSION_DENIED_MSG
 
     result = browser_mgr.get_content(_get_user_id())
+    
+    if result and ("Our systems have detected unusual traffic" in result or "About this page" in result or "solving the above CAPTCHA" in result):
+        msg = "🛑 CAPTCHA BLOCKED: Google suspects we are a bot! Stop your current browser task immediately. Tell the user they need to manually solve the CAPTCHA in the open browser window. Do not finish the task, ask them to say 'done' when solved."
+        _log("get_page_content", query, msg, "blocked")
+        return msg
+        
     _log("get_page_content", query, result[:100], "success" if not result.startswith("Error") else "error")
     return result
 
@@ -873,6 +911,134 @@ def submit_form(selector: str = "form") -> str:
     return result
 
 
+@tool
+def auto_browse(goal: str, start_url: str = "") -> str:
+    """
+    Perform a multi-step browser automation task by fetching HTML and using a post-prompt.
+    Use this tool when the user asks to perform complex tasks on the web like "play a video" or "search for something".
+    
+    CRITICAL: This tool automatically opens its own browser window. DO NOT call `open_application` or `navigate_browser` before calling this tool.
+    CRITICAL: When you use this tool, you MUST return the EXACT output string it gives you back to the user. Do not summarize or rephrase it.
+    """
+    if not check_permission(_get_user_id(), required_level=2):
+        _log("auto_browse", goal, PERMISSION_DENIED_MSG, "denied")
+        return PERMISSION_DENIED_MSG
+
+    try:
+        if start_url:
+            browser_mgr.navigate(_get_user_id(), start_url)
+            import time
+            time.sleep(2)
+
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        import os
+        llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", google_api_key=os.getenv("GEMINI_API_KEY"), temperature=0)
+        
+        executed_steps = []
+        import time
+        
+        # Run up to 3 reasoning cycles so it can navigate, wait, and click results
+        for iteration in range(3):
+            html_content = browser_mgr.get_content(_get_user_id())
+            
+            # CAPTCHA DETECTION
+            if html_content and ("Our systems have detected unusual traffic" in html_content or "About this page" in html_content or "solving the above CAPTCHA" in html_content):
+                msg = "🛑 I have been blocked by a CAPTCHA! Please solve the CAPTCHA manually in the browser window. Once you are done, tell me to 'continue' so I can finish the task."
+                _log("auto_browse", goal, msg, "blocked")
+                return msg
+
+            prompt = f"""
+Look at this HTML. The user's goal is: {goal}.
+Previous steps we already took: {executed_steps}
+
+If the goal is already fully complete (e.g. video is playing), output ONLY the word 'DONE'.
+Otherwise, write the NEXT steps to take on THIS current page to get closer to the goal.
+(use 'click <css_selector_or_visible_text>' when to click, use 'type <selector> <text>' when type, use 'enter <selector>' when enter, use 'wait <seconds>' to wait)
+
+HTML (truncated):
+{html_content[:15000]}
+            """
+            
+            response = llm.invoke(prompt)
+            if isinstance(response.content, list):
+                plan_text = str(response.content[0].get("text", response.content)).strip()
+            else:
+                plan_text = str(response.content).strip()
+            
+            if 'DONE' in plan_text.upper() or plan_text.upper() == 'DONE':
+                break
+                
+            for line in plan_text.split('\n'):
+                line = line.strip()
+                if line.lower().startswith('click '):
+                    selector = line[6:].strip().strip("'\"")
+                    browser_mgr.click(_get_user_id(), selector)
+                    executed_steps.append(f"Clicked {selector}")
+                    time.sleep(2)
+                elif line.lower().startswith('type '):
+                    parts = line[5:].strip().split(' ', 1)
+                    if len(parts) == 2:
+                        selector = parts[0].strip().strip("'\"")
+                        text = parts[1].strip().strip("'\"")
+                        browser_mgr.type_text(_get_user_id(), selector, text)
+                        executed_steps.append(f"Typed '{text}' into {selector}")
+                elif line.lower().startswith('enter '):
+                    selector = line[6:].strip().strip("'\"")
+                    browser_mgr.submit(_get_user_id(), selector)
+                    executed_steps.append(f"Pressed Enter on {selector}")
+                    time.sleep(3)
+                elif line.lower().startswith('wait '):
+                    try:
+                        secs = int(line[5:].strip())
+                        time.sleep(secs)
+                        executed_steps.append(f"Waited {secs} seconds")
+                    except ValueError:
+                        time.sleep(2)
+
+        # Wait a moment to ensure final page is loaded
+        time.sleep(2)
+        final_html = browser_mgr.get_content(_get_user_id()) or "No visible content found on final page."
+        final_text_snippet = final_html[:4000] # Return the first 4000 chars of the final page so the agent can read it
+        
+        result = "Browser task execution complete.\n\nSteps taken:\n" + "\n".join(executed_steps) + f"\n\nFINAL PAGE CONTENT (Extract answers from here):\n{final_text_snippet}"
+        _log("auto_browse", goal, result, "success")
+        return result
+
+    except Exception as e:
+        msg = f"Error in auto_browse: {str(e)}"
+        _log("auto_browse", goal, msg, "error")
+        return msg
+
+
+@tool
+def gather_information(topic: str) -> str:
+    """
+    Gather detailed information about a topic using internal AI knowledge.
+    Use this tool whenever the user asks to "search", "gather information", or "find facts".
+    """
+    try:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        import os
+        llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", google_api_key=os.getenv("GEMINI_API_KEY"), temperature=0)
+        
+        prompt = f"The user wants information about something as per this prompt: {topic}. Gather all the information needed by the user and list here ONLY the information. Provide that info to the user by starting with 'Here are some search results...'"
+        
+        response = llm.invoke(prompt)
+        
+        # Safely extract content in case it is a list
+        if isinstance(response.content, list):
+            content_str = str(response.content[0].get("text", response.content))
+        else:
+            content_str = str(response.content)
+            
+        _log("gather_information", topic, "Information gathered successfully", "success")
+        return content_str
+    except Exception as e:
+        msg = f"Failed to gather information due to API error: {str(e)}"
+        _log("gather_information", topic, msg, "error")
+        return msg
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # TOOL REGISTRY — import this from llm_agent.py
 # ─────────────────────────────────────────────────────────────────────────
@@ -881,9 +1047,8 @@ ALL_TOOLS = [
     # Level 1 — Always allowed
     get_current_time,
     get_system_info,
-    web_search,
-    set_reminder,       # Step 13 — reminder creation (L1, no OS access needed)
-    # Level 2 — Requires user opt-in
+    gather_information, # Added for information gathering without browser
+    set_reminder,           # Level 2 — Requires user opt-in
     open_application,
     run_shell_command,
     control_volume,
@@ -891,11 +1056,11 @@ ALL_TOOLS = [
     write_file,
     search_files,
     list_directory,
-    # Step 18 — Browser Automation
-    navigate_browser,
+        navigate_browser,
     click_element,
     type_into_field,
     get_page_content,
     submit_form,
+    auto_browse,        # Phase 2 — Custom post-prompt web automation
 ]
 

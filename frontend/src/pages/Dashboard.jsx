@@ -7,6 +7,7 @@ import { useAppStore } from '../store/useAppStore';
 import { SetuLogo } from '../components/SetuLogo';
 import { deriveTasksFromMessages } from '../utils/taskUtils';
 import { SettingsView } from '../features/dashboard/SettingsView';
+import { QRCodeSVG } from 'qrcode.react';
 
 const getClientOS = () => {
   const ua = window.navigator.userAgent;
@@ -57,7 +58,25 @@ export function Dashboard() {
   const [expandedSessionId, setExpandedSessionId] = useState(null);
   const [showTaskStream, setShowTaskStream] = useState(false);
 
-  const { messages, isThinking, isSpeaking, sendCommand, stopSpeaking, activeStatus, cancelTask, permissionRequest, resolvePermissionRequest } = useAgentSocket({
+  // Mobile Pairing State
+  const [showPairingModal, setShowPairingModal] = useState(false);
+  const [pairingData, setPairingData] = useState(null);
+
+  const handlePairDevice = async () => {
+    setShowPairingModal(true);
+    setPairingData(null);
+    try {
+      const res = await fetch(`http://${window.location.hostname}:8000/api/v1/user/mobile-pairing/`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setPairingData(data);
+    } catch(err) {
+      console.error(err);
+    }
+  };
+
+  const { messages, isThinking, isSpeaking, sendCommand, stopSpeaking, activeStatus, cancelTask, permissionRequest, resolvePermissionRequest, mobileConnected, connectedDeviceName } = useAgentSocket({
     token,
     conversationId,
     onReminderFired: (reminder) => {
@@ -658,6 +677,25 @@ export function Dashboard() {
                                   </div>
                                 ))}
                               </div>
+                            ) : task.trace && task.trace.length > 0 ? (
+                              <div className="border-t border-white/5 pt-3.5 space-y-2">
+                                <span className="text-[9px] font-mono text-zinc-500 block mb-1.5">EXECUTION TRACE</span>
+                                {task.trace.map((tItem, idx) => (
+                                  <div key={idx} className={`flex items-center gap-2.5 text-[11px] font-sans ${tItem.state === 'active' ? 'text-zinc-300' : tItem.state === 'done' ? 'text-[#8052ff]' : 'text-zinc-500 opacity-40'}`}>
+                                    {tItem.state === 'active' ? (
+                                      <span className="relative flex h-1.5 w-1.5 shrink-0">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#8052ff]"></span>
+                                      </span>
+                                    ) : tItem.state === 'done' ? (
+                                      <span className="w-1.5 h-1.5 rounded-full bg-[#8052ff] shrink-0" />
+                                    ) : (
+                                      <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0" />
+                                    )}
+                                    <span className={tItem.state === 'active' ? 'animate-pulse' : ''}>{tItem.text}</span>
+                                  </div>
+                                ))}
+                              </div>
                             ) : (task.status === 'running' || task.status === 'cancelling') ? (
                               <div className="border-t border-white/5 pt-3.5 space-y-2">
                                 <span className="text-[9px] font-mono text-zinc-500 block mb-1.5">EXECUTION TRACE</span>
@@ -667,14 +705,6 @@ export function Dashboard() {
                                     <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#8052ff]"></span>
                                   </span>
                                   <span className="animate-pulse">Setu is reading command...</span>
-                                </div>
-                                <div className="flex items-center gap-2.5 text-[11px] font-sans text-zinc-500 opacity-60">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0" />
-                                  <span>Analyzing system environment...</span>
-                                </div>
-                                <div className="flex items-center gap-2.5 text-[11px] font-sans text-zinc-500 opacity-40">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0" />
-                                  <span>Executing request...</span>
                                 </div>
                               </div>
                             ) : null}
@@ -981,11 +1011,31 @@ export function Dashboard() {
                       </div>
                     </div>
 
-                    <div className="glass-panel rounded-3xl p-6 border-dashed border-white/10 hover:border-white/20 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[200px] text-center group">
-                      <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-4 group-hover:border-[#8052ff]/30 group-hover:bg-[#8052ff]/5 transition-all">
+                    {mobileConnected && (
+                      <div className="glass-panel rounded-3xl p-6 flex flex-col justify-between min-h-[200px] border border-[#8052ff]/30 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-[#8052ff]/10 rounded-full blur-3xl group-hover:bg-[#8052ff]/20 transition-all pointer-events-none"></div>
+                        <div>
+                          <div className="flex items-center justify-between mb-4">
+                            <span className="px-3 py-1 rounded-full bg-[#8052ff]/10 border border-[#8052ff]/20 text-[10px] font-bold text-[#8052ff] uppercase tracking-wider">Active Remote</span>
+                          </div>
+                          <h3 className="text-xl font-bold text-white mb-1 font-display">{connectedDeviceName}</h3>
+                          <p className="text-xs text-zinc-400 font-mono">Web Client (LAN Access)</p>
+                        </div>
+                        <div className="border-t border-white/5 pt-4 mt-6 flex justify-between items-center">
+                          <span className="text-xs text-zinc-400 flex items-center gap-2">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                            Voice & Command Armed
+                          </span>
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#8052ff] animate-pulse shadow-[0_0_10px_rgba(128,82,255,0.8)]"></span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div onClick={handlePairDevice} className="glass-panel rounded-3xl p-6 border-dashed border-white/10 hover:border-white/20 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[200px] text-center group">
+                      <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-4 group-hover:border-[#8052ff]/30 group-hover:bg-[#8052ff]/5 transition-all text-zinc-400 group-hover:text-white">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
                       </div>
-                      <h3 className="text-base font-bold text-white mb-1">Pair Mobile Device</h3>
+                      <h3 className="text-base font-bold text-white mb-1">{mobileConnected ? 'Pair Another Device' : 'Pair Mobile Device'}</h3>
                       <p className="text-xs text-zinc-500 max-w-[200px]">Scan QR code or enter a 6-digit PIN on your phone to link it to Setu.</p>
                     </div>
                   </div>
@@ -1080,6 +1130,65 @@ export function Dashboard() {
           ))}
         </AnimatePresence>
       </div>
+
+      {/* Mobile Pairing Modal */}
+      <AnimatePresence>
+        {showPairingModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 font-sans"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-black border border-white/10 rounded-3xl p-8 max-w-sm w-full relative flex flex-col items-center text-center shadow-2xl"
+            >
+              <button 
+                onClick={() => setShowPairingModal(false)}
+                className="absolute top-4 right-4 text-zinc-500 hover:text-white transition-colors"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+              
+              <div className="w-12 h-12 rounded-2xl bg-[#8052ff]/10 border border-[#8052ff]/20 flex items-center justify-center text-[#8052ff] mb-4">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+              </div>
+              
+              <h2 className="text-2xl font-bold text-white mb-2">Pair Phone</h2>
+              <p className="text-zinc-400 text-sm mb-8">Scan this code with your phone's camera to use it as a remote control.</p>
+
+              <div className="bg-white p-4 rounded-2xl shadow-inner mb-6">
+                {pairingData && pairingData.url ? (
+                  <QRCodeSVG value={pairingData.url} size={200} level="H" includeMargin={true} />
+                ) : (
+                  <div className="w-[200px] h-[200px] flex items-center justify-center bg-zinc-100 rounded-xl">
+                    <div className="w-8 h-8 border-2 border-[#8052ff] border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
+              </div>
+
+              {pairingData && (
+                <div className="bg-white/5 border border-white/10 rounded-xl py-3 px-4 w-full mb-6 text-left">
+                  <p className="text-xs text-zinc-500 mb-1 uppercase tracking-wider font-bold">Local IP Address</p>
+                  <p className="text-sm text-white font-mono">{pairingData.ip}</p>
+                </div>
+              )}
+
+              <div className="w-full">
+                <button 
+                  onClick={() => setShowPairingModal(false)}
+                  className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-semibold transition-colors text-white"
+                >
+                  Close Window
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -168,6 +168,29 @@ class UserPermissionsView(APIView):
             return Response(UserPermissionsSerializer(user.permissions).data)
         return Response(perm_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+class MobilePairingView(APIView):
+    authentication_classes = [PyJWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        import socket
+        try:
+            # Try to get the local LAN IP address
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+        except Exception:
+            local_ip = "127.0.0.1"
+            
+        tokens = generate_tokens(request.user, "mobile-pair")
+        pairing_url = f"http://{local_ip}:5173/mobile?token={tokens['access_token']}"
+        return Response({
+            'url': pairing_url,
+            'ip': local_ip,
+            'token': tokens['access_token']
+        })
+
 class GoogleOAuthView(APIView):
     throttle_scope = 'auth'
     def post(self, request):

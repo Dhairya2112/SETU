@@ -2,7 +2,7 @@
 Setu Agent Command Processing (Step 8.5 + Step 14.6)
 
 This module contains the main command processing function that:
-  1. Checks Tier 0 fast-path for instant responses (Step 14.6)
+  1. Checks Tier 0 fast-path for instant responses
   2. Runs the LLM agent on complex commands
   3. Streams the response word-by-word to the WebSocket channel
   4. Generates TTS audio (cached for fast responses) and sends it to the client
@@ -34,7 +34,7 @@ from core.agent.state import get_agent, get_tts, get_fast_router, get_tts_cache
 
 from core.agent.state import register_cancellation, unregister_cancellation, is_cancelled
 
-# ── User preference cache (Step 14.6.5) ──────────────────────────────────
+# ── User preference cache ──────────────────────────────────
 # Avoids a MongoDB lookup on every single command.
 from django.core.cache import cache
 _PREF_CACHE_TTL  = 300  # 5 minutes

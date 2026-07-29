@@ -1,5 +1,5 @@
 """
-Setu Reminder Scanner (Step 13.4)
+Setu Reminder Scanner
 
 Runs every 30 seconds via background daemon thread (core.reminders.apps.py).
 Scans for due reminders and pushes them to the user's active WebSocket session.

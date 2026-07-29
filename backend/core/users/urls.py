@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     RegisterView, LoginView, RefreshView, UserProfileView, UserPermissionsView,
-    GoogleOAuthView, GitHubOAuthView
+    GoogleOAuthView, GitHubOAuthView, MobilePairingView
 )
 
 urlpatterns = [
@@ -12,5 +12,6 @@ urlpatterns = [
     path('auth/github/', GitHubOAuthView.as_view(), name='auth_github'),
     path('user/profile/', UserProfileView.as_view(), name='user_profile'),
     path('user/permissions/', UserPermissionsView.as_view(), name='user_permissions'),
+    path('user/mobile-pairing/', MobilePairingView.as_view(), name='mobile_pairing'),
 ]
 

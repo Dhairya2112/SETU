@@ -1,13 +1,3 @@
-"""
-Step 13.1 — Reminder REST API Views
-
-Endpoints:
-  GET    /api/v1/reminders/          → list user's pending (not completed) reminders
-  POST   /api/v1/reminders/          → create a new reminder
-  DELETE /api/v1/reminders/<id>/     → cancel a reminder (marks is_completed=True)
-
-Auth: PyJWTAuthentication (same pattern as all other Setu views)
-"""
 
 from rest_framework.views import APIView
 from rest_framework.response import Response

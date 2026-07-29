@@ -21,9 +21,39 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.globals import set_llm_cache
 from langchain_core.caches import InMemoryCache
+from langchain_core.callbacks import BaseCallbackHandler
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from .tools import ALL_TOOLS, set_tool_context
+
+class BrainTracker(BaseCallbackHandler):
+    def __init__(self):
+        # We will write to brain_debug.log in the backend root
+        import os
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        self.log_path = os.path.join(base_dir, "brain_debug.log")
+        
+    def _write(self, msg):
+        try:
+            with open(self.log_path, "a", encoding="utf-8") as f:
+                f.write(msg + "\n")
+        except:
+            pass
+
+    def on_chat_model_start(self, serialized, messages, **kwargs):
+        self._write("🧠 [BRAIN] Sending prompt to AI... thinking...")
+
+    def on_tool_start(self, serialized, input_str, **kwargs):
+        name = serialized.get("name", "unknown_tool") if serialized else "unknown_tool"
+        self._write(f"🛠️  [TOOL SELECTED] {name} -> Input: {input_str}")
+
+    def on_tool_end(self, output, **kwargs):
+        out_str = str(output)
+        if len(out_str) > 100:
+            out_str = out_str[:100] + "..."
+        self._write(f"✅ [TOOL FINISHED] Result: {out_str}")
+
+brain_tracker = BrainTracker()
 
 # ── Targeted Monkey Patches for NVIDIA NIM Timeout ─────────────────────────
 import requests
@@ -83,8 +113,8 @@ You are **Setu**, a sharp, friendly, and efficient AI assistant that lives on th
 
 ## Personality (Anti-Slop Directives)
 - NEVER use AI conversational filler. DO NOT say "Here is the information", "I can help with that", "Sure!", "Let me know if you need anything else", or "As an AI...".
-- Be ultra-concise, direct, and decisive. If you perform an action, just say "Done" or "Opened" instead of narrating the action.
-- Speak like a highly competent, human assistant. Never apologize unnecessarily.
+- Be concise and efficient, but maintain a warm, natural, and conversational tone. You don't need to be overly brief—speak like a highly competent human assistant.
+- When performing an action, briefly confirm it naturally (e.g. "I've opened Chrome for you") rather than being rigidly terse.
 - Proactive: prefer *doing things* over telling the user how to do them manually.
 - If you can accomplish a request with a tool, USE the tool instead of giving instructions.
 
@@ -338,7 +368,7 @@ class SetuAgent:
         try:
             stable_config = self._get_stable_config(conversation_id)
             result = self.fallback_agent.invoke(
-                {"messages": [("user", user_input)]}, config=stable_config
+                None, config=stable_config
             )
             return self._scrub_output(result["messages"][-1].content)
         except Exception as e:
@@ -352,7 +382,7 @@ class SetuAgent:
         try:
             stable_config = self._get_stable_config(conversation_id)
             result = self.tertiary_agent.invoke(
-                {"messages": [("user", user_input)]}, config=stable_config
+                None, config=stable_config
             )
             return self._scrub_output(result["messages"][-1].content)
         except Exception as e:
@@ -379,12 +409,57 @@ class SetuAgent:
                 current_status = new_status
                 status_callback(new_status)
 
+        # Log the new prompt first
+        run_config = config.copy()
+        if "callbacks" not in run_config:
+            run_config["callbacks"] = []
+        run_config["callbacks"].append(brain_tracker)
+        brain_tracker._write(f"\n========================================\n🚀 [NEW PROMPT] {user_input}\n========================================")
+
+        # LAYER 0: THE PLAN-AND-EXECUTE ROUTER
+        tool_desc = "\n".join([f"- {t.name}: {t.description}" for t in self.tools])
+        router_prompt = f"""
+You are an advanced Plan-and-Execute Router. The user's prompt is: "{user_input}"
+
+Your job is to analyze the prompt and output a minimum execution path using our tools.
+Tool List:
+{tool_desc}
+- NONE (Used if no tools are needed, just chat)
+
+First, answer these questions silently:
+Q1. Does this prompt require data fetching or automation?
+Q2. What is the exact sequence of tools required to fulfill the request?
+
+Based on the answers, what is the sequence of tools required? 
+CRITICAL: Select the absolute minimum number of tools.
+CRITICAL: If the user wants to search, read news, or gather information, you MUST use `gather_information`. NEVER use `auto_browse` for information gathering. ONLY use `auto_browse` if the user explicitly asks to automate a visual browser task (like 'play a video' or 'open chrome and click').
+Output ONLY the exact tool name(s) as a comma-separated list on the final line. Do not output anything else on the final line.
+"""
+        try:
+            router_msg = self.primary_llm.invoke(router_prompt)
+            if isinstance(router_msg.content, list):
+                raw_response = str(router_msg.content[-1].get("text", router_msg.content)).strip()
+            else:
+                raw_response = str(router_msg.content).strip()
+                
+            chosen_tools = raw_response.split('\n')[-1].replace('`', '').strip()
+            
+            logger.info("Router chose execution path: %s", chosen_tools)
+            if chosen_tools and "NONE" not in chosen_tools.upper():
+                routed_input = f"{user_input}\n\n[SYSTEM HINT: The router recommends executing the following tools in this exact sequence: {chosen_tools}. Please prioritize this execution path and ONLY use these tools if appropriate.]"
+                brain_tracker._write(f"🧠 [PLANNER ROUTER] Execution Path: {chosen_tools}")
+            else:
+                routed_input = user_input
+        except Exception as e:
+            logger.warning("Router failed, using original input: %s", e)
+            routed_input = user_input
+
         # Layer 1: Google Gemini (with Tenacity retry)
         try:
             # stream_mode="messages" streams message chunks
             for message, metadata in self.primary_agent.stream(
-                {"messages": [("user", user_input)]},
-                config=config,
+                {"messages": [("user", routed_input)]},
+                config=run_config,
                 stream_mode="messages"
             ):
                 if is_cancelled(conversation_id):
@@ -421,7 +496,7 @@ class SetuAgent:
         try:
             stable_config = self._get_stable_config(conversation_id)
             for message, metadata in self.fallback_agent.stream(
-                {"messages": [("user", user_input)]},
+                None,
                 config=stable_config,
                 stream_mode="messages"
             ):
@@ -459,7 +534,7 @@ class SetuAgent:
         try:
             stable_config = self._get_stable_config(conversation_id)
             for message, metadata in self.tertiary_agent.stream(
-                {"messages": [("user", user_input)]},
+                None,
                 config=stable_config,
                 stream_mode="messages"
             ):

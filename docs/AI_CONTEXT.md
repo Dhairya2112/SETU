@@ -146,33 +146,38 @@ backend/
 └── core/
     ├── agent/
     │   ├── llm_agent.py             # SetuAgent (3-layer LLM, LangGraph, fallback)
-    │   ├── tasks.py                 # Background thread task: process_agent_command (singleton agent)
-    │   ├── tools.py                 # All LangChain @tool functions ✅
-    │   ├── safety.py                # Command blacklist + path sandboxing ✅
-    │   ├── permissions.py           # Permission level enforcer ✅
-    │   ├── models.py                # CommandLog MongoEngine model ✅
+    │   ├── pipeline.py              # Central ML pipeline and inference handling
+    │   ├── tools.py                 # Core LangChain @tool functions
+    │   ├── browser.py               # Playwright browser automation
+    │   ├── fast_responses.py        # Optimized fast-path responses
+    │   ├── safety.py                # Command blacklist + path sandboxing
+    │   ├── permissions.py           # Permission level enforcer
+    │   ├── models.py                # CommandLog MongoEngine model
+    │   ├── state.py                 # Cross-thread state management
+    │   ├── tts_cache.py             # Audio caching for TTS optimization
+    │   ├── urls.py                  # Agent endpoints
     │   └── views.py                 # CommandView (POST /api/chat/)
     ├── ai/
     │   ├── stt.py                   # STTPipeline (Faster-Whisper multilingual)
-    │   ├── tts.py                   # TTSEngine (Kokoro, male/female, Hindi/English)
-    │   └── classifier.py            # IntentClassifier (PyTorch - skipped for MVP)
+    │   └── tts.py                   # TTSEngine (Kokoro, male/female, Hindi/English)
     ├── conversations/
     │   ├── models.py                # Conversation, Message, MessageMetadata
     │   ├── serializers.py
     │   └── views.py                 # ConversationListView, ConversationDetailView
-    ├── cross_device/                # 🚫 SKIP (MVP) — custom LAN protocol skipped (using PWA)
-    ├── memory/                      # 🚫 SKIP (MVP) — persistent memory manager skipped
     ├── users/
     │   ├── models.py                # User, UserPreferences, UserPermissions, RefreshToken
     │   ├── auth.py                  # generate_tokens(), PyJWTAuthentication, OAuth handlers
     │   ├── serializers.py
     │   └── views.py                 # Register, Login, OAuth, Refresh, Profile, Permissions
-    ├── wake_word/
-    │   └── detector.py              # WakeWordDetector (OpenWakeWord + Silero VAD)
+    ├── reminders/
+    │   ├── models.py                # Reminder model
+    │   ├── tasks.py                 # Celery/Background task runner
+    │   ├── urls.py                  
+    │   └── views.py                 # Reminder CRUD endpoints
     └── websockets/
-        ├── consumers.py             # AgentStreamConsumer
+        ├── consumers.py             # AgentStreamConsumer (handles cross-device sync)
         ├── middleware.py            # JwtAuthMiddleware
-        └── routing.py              # WebSocket URL patterns
+        └── routing.py               # WebSocket URL patterns
 
 frontend/src/
 ├── App.jsx                          # Root router (/, /auth, /onboarding/*, /dashboard/*)

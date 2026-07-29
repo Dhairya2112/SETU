@@ -8,6 +8,9 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
     const [activeStatus, setActiveStatus] = useState('idle');
     const [permissionRequest, setPermissionRequest] = useState(null);
     
+    const [mobileConnected, setMobileConnected] = useState(false);
+    const [connectedDeviceName, setConnectedDeviceName] = useState('Mobile Remote');
+    
     const socketRef = useRef(null);
     const currentAudioRef = useRef(null);
     const audioQueueRef = useRef([]);
@@ -96,6 +99,11 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
           console.log('WebSocket Connected');
           setIsConnected(true);
           reconnectAttempts = 0; // Reset connection attempts on success
+          
+          // Request connected devices status upon connecting
+          if (socketRef.current?.readyState === WebSocket.OPEN) {
+             socketRef.current.send(JSON.stringify({ action: 'ping_devices' }));
+          }
         };
 
         ws.onmessage = (event) => {
@@ -144,6 +152,13 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
               }
           } else if (data.chunk_type === 'permission_request') {
               setPermissionRequest(data.message);
+          } else if (data.chunk_type === 'device_status') {
+              if (data.device === 'mobile') {
+                  setMobileConnected(data.status === 'connected');
+                  if (data.device_name) {
+                      setConnectedDeviceName(data.device_name);
+                  }
+              }
           } else if (data.chunk_type === 'status') {
               setActiveStatus(data.message);
               if (['acknowledged', 'thinking', 'done', 'cancelled', 'failed'].includes(data.message)) {
@@ -227,5 +242,5 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
     }
   }, []);
 
-  return { isConnected, messages, isThinking, isSpeaking, sendCommand, stopSpeaking, activeStatus, cancelTask, permissionRequest, resolvePermissionRequest };
+  return { isConnected, messages, isThinking, isSpeaking, sendCommand, stopSpeaking, activeStatus, cancelTask, permissionRequest, resolvePermissionRequest, mobileConnected, connectedDeviceName };
 }

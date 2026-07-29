@@ -1,9 +1,3 @@
-"""
-Step 12.5 — Command Logging Model
-
-Every tool execution (success, denied, error, blocked) is recorded here
-for audit, debugging, and future analytics.
-"""
 
 import mongoengine as me
 import uuid

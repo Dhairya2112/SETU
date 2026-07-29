@@ -1,14 +1,3 @@
-"""
-Step 12.4 — Permission Enforcement Layer
-
-Before any tool executes, its required permission level is checked
-against the user's stored permissions in MongoDB.
-
-Levels:
-  Level 1 — Safe, informational tools.  Always allowed.
-  Level 2 — OS-interaction tools.       Requires explicit opt-in.
-  Level 3 — Admin / destructive tools.  Always denied (future UAC prompt).
-"""
 
 from core.users.models import User
 

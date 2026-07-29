@@ -1,10 +1,3 @@
-"""
-Step 13.2 — Reminder Serializer
-
-Uses plain DRF Serializer (not ModelSerializer) because MongoEngine
-Documents are not Django ORM models. Follows the same pattern as
-core/conversations/serializers.py.
-"""
 
 from rest_framework import serializers
 from datetime import datetime, timezone
