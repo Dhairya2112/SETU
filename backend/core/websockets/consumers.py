@@ -20,9 +20,11 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                 conv = Conversation.objects(conversation_id=conversation_id).only('user_id').first()
                 if conv and conv.user_id != user_id:
                     return False
-            except Exception:
-                pass
-            return True
+                return True
+            except Exception as e:
+                import logging
+                logging.getLogger('core.websockets').error(f"DB Error verifying conversation ownership: {e}")
+                return False
 
         if not await verify_conversation_ownership(self.conversation_id, self.user_id):
             await self.close(code=4003)  # Forbidden
@@ -162,15 +164,12 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                         if len(data.shape) > 1:
                             data = np.mean(data, axis=1)
 
-                        # Resample to 16000Hz using numpy linear interpolation
                         if samplerate != 16000:
-                            duration = len(data) / samplerate
-                            num_samples = int(duration * 16000)
-                            data = np.interp(
-                                np.linspace(0, len(data), num_samples, endpoint=False),
-                                np.arange(len(data)),
-                                data
-                            )
+                            import torch
+                            import torchaudio.transforms as T
+                            tensor_audio = torch.from_numpy(data).float()
+                            resampler = T.Resample(orig_freq=samplerate, new_freq=16000)
+                            data = resampler(tensor_audio).numpy()
 
                         # Ensure float32 format
                         audio_float32 = data.astype(np.float32)
@@ -249,8 +248,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                                 'chunk_type': 'status',
                                 'message': 'done'
                             }))
-                    finally:
-                        pass
+                        # (No file cleanup needed for in-memory buffer)
                 except Exception as e:
                     print(f"Error transcribing websocket audio: {e}")
                     await self.send(text_data=json.dumps({

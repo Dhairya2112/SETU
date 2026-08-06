@@ -24,6 +24,16 @@ from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
+
+class BoundedMemorySaver(MemorySaver):
+    def put(self, *args, **kwargs):
+        res = super().put(*args, **kwargs)
+        if hasattr(self, "storage") and len(self.storage) > 50:
+            keys = list(self.storage.keys())
+            for k in keys[:-50]:
+                del self.storage[k]
+        return res
+
 from langchain_core.globals import set_llm_cache
 from langchain_core.caches import InMemoryCache
 from langchain_core.callbacks import BaseCallbackHandler
@@ -42,8 +52,8 @@ class BrainTracker(BaseCallbackHandler):
         try:
             with open(self.log_path, "a", encoding="utf-8") as f:
                 f.write(msg + "\n")
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to write to brain debug log: {e}")
 
     def on_chat_model_start(self, serialized, messages, **kwargs):
         self._write("🧠 [BRAIN] Sending prompt to AI... thinking...")
@@ -171,7 +181,7 @@ class SetuAgent:
             logger.warning("NVIDIA_API_KEY is not set — tertiary LLM will fail.")
 
         self.tools = ALL_TOOLS
-        self.memory = MemorySaver()
+        self.memory = BoundedMemorySaver()
 
         # Layer 1: Google Gemini 3.1 Flash Lite (10s timeout to meet API limits)
         self.primary_llm = ChatGoogleGenerativeAI(

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 
-export function SettingsView({ profile, updatePreference, token }) {
+export function SettingsView({ profile, updatePreference, token, onLogout }) {
   const [auditLogs, setAuditLogs] = useState([]);
 
   useEffect(() => {
@@ -150,6 +150,16 @@ export function SettingsView({ profile, updatePreference, token }) {
               </div>
             </div>
 
+            <div className="glass-panel rounded-3xl p-6 space-y-4 border border-red-500/20">
+              <h3 className="text-base font-bold text-red-400 mb-2 font-display">Danger Zone</h3>
+              <p className="text-xs text-zinc-500">Sign out of your current session.</p>
+              <button
+                onClick={onLogout}
+                className="w-full py-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-semibold transition-colors text-sm"
+              >
+                Log Out
+              </button>
+            </div>
 
           </div>
         </div>

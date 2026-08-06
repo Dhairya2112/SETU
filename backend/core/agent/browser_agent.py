@@ -7,6 +7,15 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.tools import tool
 
+class BoundedMemorySaver(MemorySaver):
+    def put(self, *args, **kwargs):
+        res = super().put(*args, **kwargs)
+        if hasattr(self, "storage") and len(self.storage) > 50:
+            keys = list(self.storage.keys())
+            for k in keys[:-50]:
+                del self.storage[k]
+        return res
+
 from .browser import BrowserManager
 from .state import is_cancelled
 from .tools import conversation_id_var
@@ -86,7 +95,7 @@ RULES:
 6. Once you have achieved the goal, stop and return a summary of what you did.
 """
 
-browser_memory = MemorySaver()
+browser_memory = BoundedMemorySaver()
 
 browser_llm = ChatGoogleGenerativeAI(
     model="gemini-3.1-flash-lite",

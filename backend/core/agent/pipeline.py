@@ -201,7 +201,6 @@ def process_agent_command(text: str, conversation_id: str, user_id: str, channel
         response_text = ""
         sentence_buffer = ""
         has_error = False
-        has_error = False
 
         try:
             def handle_status(status_msg):
@@ -255,10 +254,7 @@ def process_agent_command(text: str, conversation_id: str, user_id: str, channel
             response_text += error_msg
             has_error = True
             
-            def send_error_tts():
-                generate_and_push_tts("Sorry, I ran into a system error.")
-            
-            threading.Thread(target=send_error_tts).start()
+            generate_and_push_tts("Sorry, I ran into a system error.")
 
         if is_cancelled(conversation_id):
             _push(channel_layer, group, 'status', 'cancelled')

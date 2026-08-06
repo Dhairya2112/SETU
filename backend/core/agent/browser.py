@@ -115,7 +115,13 @@ class BrowserManager:
     def close_session(self, user_id: str):
         coro = self._close_session_async(user_id)
         future = asyncio.run_coroutine_threadsafe(coro, self.loop)
-        future.result()
+        try:
+            import concurrent.futures
+            future.result(timeout=5.0)
+        except concurrent.futures.TimeoutError:
+            logger.warning("Timeout closing session for user %s. Proceeding anyway.", user_id)
+        except Exception as e:
+            logger.error("Error closing session for user %s: %s", user_id, e)
 
     async def _shutdown_async(self):
         for user_id in list(self.sessions.keys()):

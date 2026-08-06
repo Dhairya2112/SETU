@@ -1049,6 +1049,7 @@ export function Dashboard() {
                 profile={profile} 
                 updatePreference={updatePreference} 
                 token={token} 
+                onLogout={handleLogout}
               />
             )}
 

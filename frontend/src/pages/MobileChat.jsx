@@ -34,8 +34,7 @@ export function MobileChat() {
   const {
     startListening,
     stopListening,
-    isActive,
-    error
+    isActive
   } = useAudioAnalyser();
 
   const armVoice = useCallback(async () => {
@@ -66,7 +65,6 @@ export function MobileChat() {
     }
   };
 
-  const latestMessage = messages[messages.length - 1];
 
   return (
     <div className="fixed inset-0 w-full h-[100dvh] text-white font-sans bg-[#050505] flex flex-col overflow-hidden overscroll-none">
