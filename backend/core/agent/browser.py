@@ -48,7 +48,7 @@ class BrowserManager:
     async def _setup_playwright(self):
         self.playwright = await async_playwright().start()
         import os
-        headless = os.getenv("PLAYWRIGHT_HEADLESS", "True").lower() == "true"
+        headless = os.getenv("PLAYWRIGHT_HEADLESS", "False").lower() == "true"
         self.browser = await self.playwright.chromium.launch(headless=headless, slow_mo=300)
 
     def _cleanup_loop(self):
@@ -138,7 +138,9 @@ class BrowserManager:
     def navigate(self, user_id: str, url: str) -> str:
         async def _action():
             page = await self._get_page_async(user_id)
-            await page.goto(url, wait_until="load", timeout=30000)
+            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            # Short settle delay for JS frameworks
+            await asyncio.sleep(0.3)
             return f"Successfully navigated to {page.url}"
         
         try:
@@ -147,93 +149,122 @@ class BrowserManager:
         except Exception as e:
             return f"Error navigating to {url}: {str(e)}"
 
-    def click(self, user_id: str, selector: str) -> str:
+    def read_screen(self, user_id: str) -> dict:
         async def _action():
             page = await self._get_page_async(user_id)
-            try:
-                # 1. Try selector directly
-                loc = page.locator(selector)
-                await loc.first.click(timeout=5000)
-                return f"Successfully clicked element '{selector}'"
-            except Exception as e1:
-                # 2. Try text match fallback if not a strict CSS selector
-                if not selector.startswith((".", "#", "[", "xpath=")):
-                    try:
-                        loc = page.get_by_text(selector, exact=False)
-                        await loc.first.click(timeout=5000)
-                        return f"Successfully clicked element by text '{selector}'"
-                    except Exception as e2:
-                        raise Exception(f"Selector click failed: {e1}. Text fallback click failed: {e2}")
-                else:
-                    raise e1
+            js_script = """
+            () => {
+                let generationId = Date.now().toString();
+                window.__setu_generation = generationId;
+                
+                // Recursively pierce Shadow DOMs
+                function getAllElements(root) {
+                    let elements = [];
+                    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null, false);
+                    let node;
+                    while (node = walker.nextNode()) {
+                        elements.push(node);
+                        if (node.shadowRoot) {
+                            elements = elements.concat(getAllElements(node.shadowRoot));
+                        }
+                    }
+                    return elements;
+                }
+                
+                let allNodes = getAllElements(document);
+                let interactiveTags = ['A', 'BUTTON', 'INPUT', 'TEXTAREA', 'SELECT'];
+                let elements = allNodes.filter(el => 
+                    interactiveTags.includes(el.tagName) || 
+                    el.getAttribute('role') === 'button' || 
+                    el.getAttribute('role') === 'link' || 
+                    el.hasAttribute('tabindex')
+                );
+                
+                let map = [];
+                let idCounter = 1;
+                
+                elements.forEach(el => {
+                    let rect = el.getBoundingClientRect();
+                    // Verify visibility
+                    if (rect.width > 0 && rect.height > 0 && window.getComputedStyle(el).visibility !== 'hidden' && window.getComputedStyle(el).opacity !== '0') {
+                        el.setAttribute('setu-id', idCounter);
+                        
+                        let text = el.innerText || el.value || el.placeholder || el.getAttribute('aria-label') || el.name || 'unnamed';
+                        text = text.substring(0, 60).replace(/\\n/g, ' ').trim();
+                        
+                        let tag = el.tagName.toLowerCase();
+                        if (el.getAttribute('type')) tag += `[type="${el.getAttribute('type')}"]`;
+                        
+                        map.push(`[ID: ${idCounter}] ${tag}: "${text}"`);
+                        idCounter++;
+                    }
+                });
+                
+                return {
+                    "generation_id": generationId,
+                    "elements": map,
+                    "url": window.location.href,
+                    "title": document.title
+                };
+            }
+            """
+            result = await page.evaluate(js_script)
+            return result
 
         try:
             future = asyncio.run_coroutine_threadsafe(_action(), self.loop)
             return future.result()
         except Exception as e:
-            return f"Error clicking '{selector}': {str(e)}"
+            return {"status": "error", "message": str(e)}
 
-    def type_text(self, user_id: str, selector: str, text: str) -> str:
+    def click_element(self, user_id: str, element_id: int, generation_id: str) -> dict:
         async def _action():
             page = await self._get_page_async(user_id)
-            try:
-                # 1. Try selector directly
-                loc = page.locator(selector)
-                await loc.first.fill(text, timeout=5000)
-                return f"Successfully typed text into '{selector}'"
-            except Exception as e1:
-                # 2. Try text match fallback if not a strict CSS selector
-                if not selector.startswith((".", "#", "[", "xpath=")):
-                    try:
-                        loc = page.get_by_text(selector, exact=False)
-                        await loc.first.fill(text, timeout=5000)
-                        return f"Successfully typed text into element matched by text '{selector}'"
-                    except Exception as e2:
-                        raise Exception(f"Selector fill failed: {e1}. Text fallback fill failed: {e2}")
-                else:
-                    raise e1
+            
+            # Stale Element Check
+            current_gen = await page.evaluate("window.__setu_generation")
+            if str(current_gen) != str(generation_id):
+                return {"status": "stale_id", "message": f"DOM updated. Generation mismatch (Expected: {generation_id}, Found: {current_gen}). Please call read_screen() again."}
+            
+            loc = page.locator(f"[setu-id='{element_id}']")
+            if await loc.count() == 0:
+                return {"status": "error", "message": f"Element ID {element_id} not found on the page."}
+                
+            await loc.first.click(timeout=5000)
+            await page.wait_for_load_state("domcontentloaded")
+            await asyncio.sleep(0.3)
+            return {"status": "success", "message": f"Clicked element {element_id}."}
 
         try:
             future = asyncio.run_coroutine_threadsafe(_action(), self.loop)
             return future.result()
         except Exception as e:
-            return f"Error typing into '{selector}': {str(e)}"
+            return {"status": "error", "message": str(e)}
 
-    def get_content(self, user_id: str) -> str:
+    def type_element(self, user_id: str, element_id: int, text: str, generation_id: str, press_enter: bool = False) -> dict:
         async def _action():
             page = await self._get_page_async(user_id)
-            # Return text of body
-            content = await page.locator("body").inner_text()
-            return content
-
-        try:
-            future = asyncio.run_coroutine_threadsafe(_action(), self.loop)
-            return future.result()
-        except Exception as e:
-            return f"Error getting content: {str(e)}"
-
-    def submit(self, user_id: str, selector: str) -> str:
-        async def _action():
-            page = await self._get_page_async(user_id)
-            try:
-                # 1. Try selector directly
-                loc = page.locator(selector)
+            
+            # Stale Element Check
+            current_gen = await page.evaluate("window.__setu_generation")
+            if str(current_gen) != str(generation_id):
+                return {"status": "stale_id", "message": f"DOM updated. Generation mismatch. Please call read_screen() again."}
+            
+            loc = page.locator(f"[setu-id='{element_id}']")
+            if await loc.count() == 0:
+                return {"status": "error", "message": f"Element ID {element_id} not found on the page."}
+                
+            await loc.first.fill(text, timeout=5000)
+            if press_enter:
                 await loc.first.press("Enter", timeout=5000)
-                return f"Successfully pressed Enter on '{selector}'"
-            except Exception as e1:
-                # 2. Try text match fallback if not a strict CSS selector
-                if not selector.startswith((".", "#", "[", "xpath=")):
-                    try:
-                        loc = page.get_by_text(selector, exact=False)
-                        await loc.first.press("Enter", timeout=5000)
-                        return f"Successfully pressed Enter on element matched by text '{selector}'"
-                    except Exception as e2:
-                        raise Exception(f"Selector enter failed: {e1}. Text fallback enter failed: {e2}")
-                else:
-                    raise e1
+                await page.wait_for_load_state("domcontentloaded")
+                await asyncio.sleep(0.3)
+                return {"status": "success", "message": f"Typed text into element {element_id} and pressed Enter."}
+            return {"status": "success", "message": f"Typed text into element {element_id}."}
 
         try:
             future = asyncio.run_coroutine_threadsafe(_action(), self.loop)
             return future.result()
         except Exception as e:
-            return f"Error submitting '{selector}': {str(e)}"
+            return {"status": "error", "message": str(e)}
+

@@ -8,12 +8,74 @@ import subprocess
 import datetime
 import contextvars
 from pathlib import Path
+import time
+import shutil
+import logging
+import webbrowser
+import dateparser
+import uuid
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
+if platform.system() == "Windows":
+    import winreg
+    import ctypes
+
+# Map common names to actual executables or macOS App names
+APP_ALIASES: dict[str, list[str]] = {
+    # Browsers
+    "chrome": ["Google Chrome", "chrome", "google-chrome", "google-chrome-stable"],
+    "firefox": ["Firefox", "firefox"],
+    "edge": ["Microsoft Edge", "msedge", "microsoft-edge"],
+    "brave": ["Brave Browser", "brave", "brave-browser"],
+    "safari": ["Safari", "safari"],
+    # Dev tools
+    "code": ["Visual Studio Code", "code"],
+    "vscode": ["Visual Studio Code", "code"],
+    "vs code": ["Visual Studio Code", "code"],
+    "terminal": ["Terminal", "iterm", "wt", "cmd"] if platform.system() in ["Windows", "Darwin"] else ["gnome-terminal", "x-terminal-emulator"],
+    # System
+    "notepad": ["TextEdit", "notepad"] if platform.system() in ["Windows", "Darwin"] else ["gedit", "nano"],
+    "calculator": ["Calculator", "calc"] if platform.system() in ["Windows", "Darwin"] else ["gnome-calculator"],
+    "file explorer": ["Finder", "explorer"] if platform.system() in ["Windows", "Darwin"] else ["nautilus"],
+    "explorer": ["Finder", "explorer"] if platform.system() in ["Windows", "Darwin"] else ["nautilus"],
+    "files": ["Finder", "explorer"] if platform.system() in ["Windows", "Darwin"] else ["nautilus"],
+    # Media
+    "spotify": ["Spotify", "spotify"],
+    "vlc": ["VLC", "vlc"],
+    # Communication
+    "discord": ["Discord", "discord"],
+    "slack": ["Slack", "slack"],
+    "teams": ["Microsoft Teams", "teams", "msteams"],
+    "whatsapp": ["WhatsApp", "whatsapp"],
+}
 
 from langchain_core.tools import tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+
+_gather_info_llm = None
+def _get_gather_info_llm():
+    global _gather_info_llm
+    if _gather_info_llm is None:
+        _gather_info_llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", google_api_key=os.getenv("GEMINI_API_KEY"), temperature=0)
+    return _gather_info_llm
 
 from .safety import is_command_blocked, get_blocked_reason, is_path_allowed, sanitize_output
 from .permissions import check_permission, PERMISSION_DENIED_MSG
 from .models import CommandLog
+from core.users.models import User
+from core.reminders.models import Reminder
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from core.agent.state import register_permission_request, get_permission_status, clear_permission_request
+from datetime import datetime, timezone
+from duckduckgo_search import DDGS
+if platform.system() == "Windows":
+    from ctypes import HRESULT, POINTER, c_float, c_int, c_bool, c_void_p, byref
+    from ctypes.wintypes import DWORD
 
 # ── ContextVars for user/conversation ID ──
 user_id_var = contextvars.ContextVar("user_id", default="anonymous")
@@ -29,7 +91,6 @@ def set_tool_context(user_id: str, conversation_id: str) -> None:
 def _get_user_id() -> str:
     uid = user_id_var.get()
     if uid == "anonymous":
-        import logging
         logging.getLogger('core.agent').warning("Tool executed without user_id context! Defaulting to anonymous.")
     return uid
 
@@ -37,7 +98,6 @@ def _get_user_id() -> str:
 def _get_conversation_id() -> str:
     cid = conversation_id_var.get()
     if cid == "unknown":
-        import logging
         logging.getLogger('core.agent').warning("Tool executed without conversation_id context! Defaulting to unknown.")
     return cid
 
@@ -58,10 +118,6 @@ def _log(tool_name: str, tool_input: str, tool_output: str, status: str) -> None
 
 def request_interactive_permission(target_path: str, action: str) -> bool:
     """Pause the tool thread and ask the frontend user for permission."""
-    from core.users.models import User
-    from asgiref.sync import async_to_sync
-    from channels.layers import get_channel_layer
-    from core.agent.state import register_permission_request, get_permission_status, clear_permission_request
     import uuid
     
     user_id = _get_user_id()
@@ -114,9 +170,7 @@ def get_current_time(query: str = "") -> str:
 @tool
 def get_system_info(query: str = "") -> str:
     """Get system information including CPU usage, RAM, disk, battery, and OS details. Always safe to run."""
-    try:
-        import psutil
-    except ImportError:
+    if psutil is None:
         msg = "psutil is not installed. Cannot retrieve system information."
         _log("get_system_info", query, msg, "error")
         return msg
@@ -191,7 +245,7 @@ def open_application(app_name: str, file_path: str = "") -> str:
     """
     Open a desktop application by name (e.g., 'chrome', 'notepad', 'code', 'spotify'). Requires Level 2 permission.
     If you want to open a specific file or URL in the application, provide it in the optional `file_path` argument.
-    CRITICAL: Do NOT use this tool if the user wants to automate the web (e.g., 'play a video on youtube', 'search google'). Use `auto_browse` for that instead. Only use this if they just want the app opened and nothing else.
+    CRITICAL: Do NOT use this tool if the user wants to automate the web (e.g., 'play a video on youtube', 'search google'). Use `delegate_browser_task` for that instead. Only use this if they just want the app opened and nothing else.
     """
     if not check_permission(_get_user_id(), required_level=2):
         _log("open_application", app_name, PERMISSION_DENIED_MSG, "denied")
@@ -232,35 +286,6 @@ def open_application(app_name: str, file_path: str = "") -> str:
             if drive_path:
                 return _open_drive_explorer(drive_path, app_name)
 
-    # Map common names to actual executables or macOS App names
-    app_aliases: dict[str, list[str]] = {
-        # Browsers
-        "chrome": ["Google Chrome", "chrome", "google-chrome", "google-chrome-stable"],
-        "firefox": ["Firefox", "firefox"],
-        "edge": ["Microsoft Edge", "msedge", "microsoft-edge"],
-        "brave": ["Brave Browser", "brave", "brave-browser"],
-        "safari": ["Safari", "safari"],
-        # Dev tools
-        "code": ["Visual Studio Code", "code"],
-        "vscode": ["Visual Studio Code", "code"],
-        "vs code": ["Visual Studio Code", "code"],
-        "terminal": ["Terminal", "iterm", "wt", "cmd"] if platform.system() in ["Windows", "Darwin"] else ["gnome-terminal", "x-terminal-emulator"],
-        # System
-        "notepad": ["TextEdit", "notepad"] if platform.system() in ["Windows", "Darwin"] else ["gedit", "nano"],
-        "calculator": ["Calculator", "calc"] if platform.system() in ["Windows", "Darwin"] else ["gnome-calculator"],
-        "file explorer": ["Finder", "explorer"] if platform.system() in ["Windows", "Darwin"] else ["nautilus"],
-        "explorer": ["Finder", "explorer"] if platform.system() in ["Windows", "Darwin"] else ["nautilus"],
-        "files": ["Finder", "explorer"] if platform.system() in ["Windows", "Darwin"] else ["nautilus"],
-        # Media
-        "spotify": ["Spotify", "spotify"],
-        "vlc": ["VLC", "vlc"],
-        # Communication
-        "discord": ["Discord", "discord"],
-        "slack": ["Slack", "slack"],
-        "teams": ["Microsoft Teams", "teams", "msteams"],
-        "whatsapp": ["WhatsApp", "whatsapp"],
-    }
-
     # Check if this is a website URL or a common web destination
     web_destinations = {
         "youtube": "https://youtube.com",
@@ -289,7 +314,6 @@ def open_application(app_name: str, file_path: str = "") -> str:
             url = "https://" + url
             
         try:
-            import webbrowser
             webbrowser.open(url)
             result = f"Opened website {url} in your default browser."
             _log("open_application", app_name, result, "success")
@@ -300,10 +324,9 @@ def open_application(app_name: str, file_path: str = "") -> str:
             return result
 
     # Otherwise, try opening it as a local system application
-    candidates = app_aliases.get(name_lower, [name_lower])
+    candidates = APP_ALIASES.get(name_lower, [name_lower])
 
     def find_app_path(candidate: str) -> str | None:
-        import shutil
         names = [candidate]
         if not candidate.endswith(".exe"):
             names.append(candidate + ".exe")
@@ -312,7 +335,6 @@ def open_application(app_name: str, file_path: str = "") -> str:
             if path:
                 return path
             if platform.system() == "Windows":
-                import winreg
                 for hive in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
                     try:
                         key_path = f"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{name}"
@@ -373,7 +395,33 @@ def open_application(app_name: str, file_path: str = "") -> str:
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                     )
-                result = f"Opened {app_name} successfully."
+                
+                # Window Foreground Assurance (WaitMsBeforeAsync style)
+                time.sleep(1.5)
+                
+                active_window = None
+                if platform.system() == "Windows":
+                    try:
+                        hwnd = ctypes.windll.user32.GetForegroundWindow()
+                        if hwnd:
+                            length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+                            buf = ctypes.create_unicode_buffer(length + 1)
+                            ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+                            active_window = buf.value
+                    except Exception:
+                        pass
+                elif platform.system() == "Darwin":
+                    try:
+                        script = 'tell application "System Events" to get name of first application process whose frontmost is true'
+                        active_window = subprocess.check_output(['osascript', '-e', script], text=True).strip()
+                    except Exception:
+                        pass
+                
+                if active_window:
+                    result = f"Opened {app_name} successfully. (Active Window: {active_window})"
+                else:
+                    result = f"Launched {app_name} process, but couldn't verify active window."
+                    
                 _log("open_application", app_name, result, "success")
                 return result
             except (FileNotFoundError, subprocess.CalledProcessError):
@@ -386,6 +434,86 @@ def open_application(app_name: str, file_path: str = "") -> str:
         result = f"Error opening {app_name}: {str(e)}"
         _log("open_application", app_name, result, "error")
         return result
+
+
+@tool
+def close_application(app_name: str) -> str:
+    """Close a desktop application by name (e.g., 'chrome', 'notepad'). Requires Level 2 permission."""
+    if not check_permission(_get_user_id(), required_level=2):
+        _log("close_application", app_name, PERMISSION_DENIED_MSG, "denied")
+        return PERMISSION_DENIED_MSG
+        
+    try:
+        name_lower = app_name.strip().lower()
+        candidates = APP_ALIASES.get(name_lower, [name_lower])
+        
+        success = False
+        error_msgs = []
+        
+        if platform.system() == "Windows":
+            for candidate in candidates:
+                exe_name = candidate if candidate.endswith(".exe") else f"{candidate}.exe"
+                res = subprocess.run(f'taskkill /IM "{exe_name}" /T /F', shell=True, capture_output=True, text=True)
+                if res.returncode == 0:
+                    success = True
+                    break
+                else:
+                    error_msgs.append(res.stderr.strip() or res.stdout.strip())
+        elif platform.system() == "Darwin":
+            for candidate in candidates:
+                res = subprocess.run(['killall', candidate], capture_output=True, text=True)
+                if res.returncode == 0:
+                    success = True
+                    break
+                else:
+                    error_msgs.append(res.stderr.strip() or res.stdout.strip())
+        else:
+            for candidate in candidates:
+                res = subprocess.run(['killall', candidate], capture_output=True, text=True)
+                if res.returncode == 0:
+                    success = True
+                    break
+                else:
+                    error_msgs.append(res.stderr.strip() or res.stdout.strip())
+                    
+        if success:
+            result = f"Successfully closed {app_name}."
+        else:
+            unique_errs = list(set(err for err in error_msgs if err))
+            err_str = ', '.join(unique_errs)[:200]
+            result = f"Failed to close {app_name}: {err_str}"
+            
+        _log("close_application", app_name, result, "success" if success else "error")
+        return result
+    except Exception as e:
+        result = f"Error closing {app_name}: {str(e)}"
+        _log("close_application", app_name, result, "error")
+        return result
+
+
+@tool
+def check_os_permissions() -> str:
+    """Check if the agent has OS-level permissions to control the desktop (e.g., macOS Accessibility, Windows Admin)."""
+    if platform.system() == "Darwin":
+        try:
+            script = 'tell application "System Events" to get name of every process'
+            res = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
+            if res.returncode == 0:
+                return "macOS Accessibility permissions are GRANTED."
+            else:
+                return "macOS Accessibility permissions are MISSING. Please go to System Settings -> Privacy & Security -> Accessibility and add your terminal/IDE."
+        except Exception as e:
+            return f"Failed to check permissions: {str(e)}"
+    elif platform.system() == "Windows":
+        try:
+            is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+            if is_admin:
+                return "Windows permissions: Running as Administrator (Elevated)."
+            else:
+                return "Windows permissions: Running as Standard User. (Some system apps may fail to close or open)."
+        except Exception as e:
+            return f"Failed to check permissions: {str(e)}"
+    return f"Permission check not required or supported for OS: {platform.system()}"
 
 
 
@@ -473,9 +601,6 @@ def control_volume(action: str) -> str:
 
     # Windows: Use native ctypes COM interface for WASAPI (pycaw-like, zero-dependency)
     try:
-        import ctypes
-        from ctypes import HRESULT, POINTER, c_float, c_int, c_bool, c_void_p, byref
-        from ctypes.wintypes import DWORD
 
         class GUID(ctypes.Structure):
             _fields_ = [
@@ -765,10 +890,6 @@ def set_reminder(title: str, remind_at: str, description: str = "") -> str:
       set_reminder('Team meeting', 'tomorrow at 9 AM', 'Bring the Q2 report')
       set_reminder('Take medicine', 'in 30 minutes')
     """
-    import dateparser
-    from datetime import datetime, timezone
-    from core.reminders.models import Reminder
-
     # ── Parse the time string ──
     parsed_time = dateparser.parse(
         remind_at,
@@ -825,189 +946,28 @@ def set_reminder(title: str, remind_at: str, description: str = "") -> str:
 # 18.2  BROWSER AUTOMATION TOOLS
 # ─────────────────────────────────────────────────────────────────────────
 
-from .browser import BrowserManager
+# ─────────────────────────────────────────────────────────────────────────
+# 18.2  BROWSER AUTOMATION TOOLS (Sub-Agent Handoff)
+# ─────────────────────────────────────────────────────────────────────────
 
-browser_mgr = BrowserManager()
-
-
-@tool
-def navigate_browser(url: str) -> str:
-    """
-    Open browser and navigate to the specified URL. Requires Level 2 permission.
-    Example: navigate_browser("https://youtube.com")
-    """
-    if not check_permission(_get_user_id(), required_level=2):
-        _log("navigate_browser", url, PERMISSION_DENIED_MSG, "denied")
-        return PERMISSION_DENIED_MSG
-
-    result = browser_mgr.navigate(_get_user_id(), url)
-    _log("navigate_browser", url, result, "success" if not result.startswith("Error") else "error")
-    return result
-
+from .browser_agent import run_browser_task
+from .state import is_cancelled
 
 @tool
-def click_element(selector: str) -> str:
+def delegate_browser_task(goal: str) -> str:
     """
-    Click a CSS selector or visible text on the current browser page. Requires Level 2 permission.
-    Example: click_element("#search-button") or click_element("Sign In")
-    """
-    if not check_permission(_get_user_id(), required_level=2):
-        _log("click_element", selector, PERMISSION_DENIED_MSG, "denied")
-        return PERMISSION_DENIED_MSG
-
-    result = browser_mgr.click(_get_user_id(), selector)
-    _log("click_element", selector, result, "success" if not result.startswith("Error") else "error")
-    return result
-
-
-@tool
-def type_into_field(selector: str, text: str) -> str:
-    """
-    Type text into an input or form field on the current browser page. Requires Level 2 permission.
-    Example: type_into_field("input[name='search']", "setu assistant")
+    Delegate a web automation task to the Browser Sub-Agent. 
+    Use this tool whenever the user asks to perform complex tasks on the web like "play a video on YouTube", "login to Twitter", or "buy a product".
+    The sub-agent will autonomously navigate, read the screen, type, and click until the goal is achieved.
     """
     if not check_permission(_get_user_id(), required_level=2):
-        _log("type_into_field", f"{selector} | {text}", PERMISSION_DENIED_MSG, "denied")
+        _log("delegate_browser_task", goal, PERMISSION_DENIED_MSG, "denied")
         return PERMISSION_DENIED_MSG
 
-    result = browser_mgr.type_text(_get_user_id(), selector, text)
-    _log("type_into_field", f"{selector} | {text}", result, "success" if not result.startswith("Error") else "error")
-    return result
-
-
-@tool
-def get_page_content(query: str = "") -> str:
-    """
-    Get the visible text content of the current active browser page. Requires Level 2 permission.
-    Use this to read and understand what is currently displayed on the page.
-    """
-    if not check_permission(_get_user_id(), required_level=2):
-        _log("get_page_content", query, PERMISSION_DENIED_MSG, "denied")
-        return PERMISSION_DENIED_MSG
-
-    result = browser_mgr.get_content(_get_user_id())
+    result = run_browser_task(goal, _get_conversation_id())
     
-    if result and ("Our systems have detected unusual traffic" in result or "About this page" in result or "solving the above CAPTCHA" in result):
-        msg = "🛑 CAPTCHA BLOCKED: Google suspects we are a bot! Stop your current browser task immediately. Tell the user they need to manually solve the CAPTCHA in the open browser window. Do not finish the task, ask them to say 'done' when solved."
-        _log("get_page_content", query, msg, "blocked")
-        return msg
-        
-    _log("get_page_content", query, result[:100], "success" if not result.startswith("Error") else "error")
+    _log("delegate_browser_task", goal, result[:200], "success" if "failed" not in result.lower() else "error")
     return result
-
-
-@tool
-def submit_form(selector: str = "form") -> str:
-    """
-    Submit a form or press Enter on a selector on the current browser page. Requires Level 2 permission.
-    Example: submit_form("input[type='password']") or submit_form("form")
-    """
-    if not check_permission(_get_user_id(), required_level=2):
-        _log("submit_form", selector, PERMISSION_DENIED_MSG, "denied")
-        return PERMISSION_DENIED_MSG
-
-    result = browser_mgr.submit(_get_user_id(), selector)
-    _log("submit_form", selector, result, "success" if not result.startswith("Error") else "error")
-    return result
-
-
-@tool
-def auto_browse(goal: str, start_url: str = "") -> str:
-    """
-    Perform a multi-step browser automation task by fetching HTML and using a post-prompt.
-    Use this tool when the user asks to perform complex tasks on the web like "play a video" or "search for something".
-    
-    CRITICAL: This tool automatically opens its own browser window. DO NOT call `open_application` or `navigate_browser` before calling this tool.
-    CRITICAL: When you use this tool, you MUST return the EXACT output string it gives you back to the user. Do not summarize or rephrase it.
-    """
-    if not check_permission(_get_user_id(), required_level=2):
-        _log("auto_browse", goal, PERMISSION_DENIED_MSG, "denied")
-        return PERMISSION_DENIED_MSG
-
-    try:
-        if start_url:
-            browser_mgr.navigate(_get_user_id(), start_url)
-            import time
-            time.sleep(2)
-
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        import os
-        llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", google_api_key=os.getenv("GEMINI_API_KEY"), temperature=0)
-        
-        executed_steps = []
-        import time
-        
-        # Run up to 3 reasoning cycles so it can navigate, wait, and click results
-        for iteration in range(3):
-            html_content = browser_mgr.get_content(_get_user_id())
-            
-            # CAPTCHA DETECTION
-            if html_content and ("Our systems have detected unusual traffic" in html_content or "About this page" in html_content or "solving the above CAPTCHA" in html_content):
-                msg = "🛑 I have been blocked by a CAPTCHA! Please solve the CAPTCHA manually in the browser window. Once you are done, tell me to 'continue' so I can finish the task."
-                _log("auto_browse", goal, msg, "blocked")
-                return msg
-
-            prompt = f"""
-Look at this HTML. The user's goal is: {goal}.
-Previous steps we already took: {executed_steps}
-
-If the goal is already fully complete (e.g. video is playing), output ONLY the word 'DONE'.
-Otherwise, write the NEXT steps to take on THIS current page to get closer to the goal.
-(use 'click <css_selector_or_visible_text>' when to click, use 'type <selector> <text>' when type, use 'enter <selector>' when enter, use 'wait <seconds>' to wait)
-
-HTML (truncated):
-{html_content[:15000]}
-            """
-            
-            response = llm.invoke(prompt)
-            if isinstance(response.content, list):
-                plan_text = str(response.content[0].get("text", response.content)).strip()
-            else:
-                plan_text = str(response.content).strip()
-            
-            if 'DONE' in plan_text.upper() or plan_text.upper() == 'DONE':
-                break
-                
-            for line in plan_text.split('\n'):
-                line = line.strip()
-                if line.lower().startswith('click '):
-                    selector = line[6:].strip().strip("'\"")
-                    browser_mgr.click(_get_user_id(), selector)
-                    executed_steps.append(f"Clicked {selector}")
-                    time.sleep(2)
-                elif line.lower().startswith('type '):
-                    parts = line[5:].strip().split(' ', 1)
-                    if len(parts) == 2:
-                        selector = parts[0].strip().strip("'\"")
-                        text = parts[1].strip().strip("'\"")
-                        browser_mgr.type_text(_get_user_id(), selector, text)
-                        executed_steps.append(f"Typed '{text}' into {selector}")
-                elif line.lower().startswith('enter '):
-                    selector = line[6:].strip().strip("'\"")
-                    browser_mgr.submit(_get_user_id(), selector)
-                    executed_steps.append(f"Pressed Enter on {selector}")
-                    time.sleep(3)
-                elif line.lower().startswith('wait '):
-                    try:
-                        secs = int(line[5:].strip())
-                        time.sleep(secs)
-                        executed_steps.append(f"Waited {secs} seconds")
-                    except ValueError:
-                        time.sleep(2)
-
-        # Wait a moment to ensure final page is loaded
-        time.sleep(2)
-        final_html = browser_mgr.get_content(_get_user_id()) or "No visible content found on final page."
-        final_text_snippet = final_html[:4000] # Return the first 4000 chars of the final page so the agent can read it
-        
-        result = "Browser task execution complete.\n\nSteps taken:\n" + "\n".join(executed_steps) + f"\n\nFINAL PAGE CONTENT (Extract answers from here):\n{final_text_snippet}"
-        _log("auto_browse", goal, result, "success")
-        return result
-
-    except Exception as e:
-        msg = f"Error in auto_browse: {str(e)}"
-        _log("auto_browse", goal, msg, "error")
-        return msg
 
 
 @tool
@@ -1017,15 +977,12 @@ def gather_information(topic: str) -> str:
     Use this tool whenever the user asks to "search", "gather information", or "find facts".
     """
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        import os
-        llm = ChatGoogleGenerativeAI(model="gemini-3.1-flash-lite", google_api_key=os.getenv("GEMINI_API_KEY"), temperature=0)
+        llm = _get_gather_info_llm()
         
         prompt = f"The user wants information about something as per this prompt: {topic}. Gather all the information needed by the user and list here ONLY the information. Provide that info to the user by starting with 'Here are some search results...'"
         
         response = llm.invoke(prompt)
         
-        # Safely extract content in case it is a list
         if isinstance(response.content, list):
             content_str = str(response.content[0].get("text", response.content))
         else:
@@ -1047,20 +1004,17 @@ ALL_TOOLS = [
     # Level 1 — Always allowed
     get_current_time,
     get_system_info,
-    gather_information, # Added for information gathering without browser
+    check_os_permissions,
+    gather_information,     # Added for information gathering without browser
     set_reminder,           # Level 2 — Requires user opt-in
     open_application,
+    close_application,
     run_shell_command,
     control_volume,
     read_file,
     write_file,
     search_files,
     list_directory,
-        navigate_browser,
-    click_element,
-    type_into_field,
-    get_page_content,
-    submit_form,
-    auto_browse,        # Phase 2 — Custom post-prompt web automation
+    delegate_browser_task,  # Replaces all 6 legacy browser tools
 ]
 

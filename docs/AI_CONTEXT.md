@@ -23,9 +23,9 @@ Setu is a **private, voice-native, cross-device AI automation engine** for Windo
 |---|---|
 | **Brand name** | ✅ Setu (सेतु) — confirmed |
 | **Completed foundation** | Phases 1–4A: Django backend, LangGraph agent, WebSocket, MongoDB, React JS frontend, permission system, OS tools, OAuth, Reminders, Audits, and Step 14.6 Speed Optimizations |
-| **Current Priority** | Phase A: Playwright Browser Automation |
-| **Active Step** | Step 18 — Browser Automation (Playwright) |
-| **All known bugs (B1–B8)** | ✅ Fully resolved |
+| **Current Priority** | Finalizing Universal Automation (Phases 3, 4, 5) |
+| **Active Step** | Step 18.5 — Browser Sub-Agent & Desktop OS Integrity |
+| **All known bugs (B1–B9)** | ✅ Fully resolved (Shadow DOM piercing, Alias fallbacks, Import cleanup) |
 
 **Do NOT implement anything from Phase 5 (Post-MVP) or beyond unless explicitly instructed.**
 

@@ -111,8 +111,10 @@ export function useAudioAnalyser() {
       streamRef.current = null;
     }
     if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
-      audioContextRef.current = null;
+      if (audioContextRef.current.state !== 'closed') {
+          // Suspend instead of close to prevent interrupting other browser audio elements
+          audioContextRef.current.suspend().catch(() => {});
+      }
     }
     analyserRef.current = null;
     dataArrayRef.current = null;

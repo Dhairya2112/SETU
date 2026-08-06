@@ -13,8 +13,11 @@ module level (singleton pattern) to avoid reloading heavy models on every
 function call.
 """
 
+import re
 import time
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 
 from channels.layers import get_channel_layer
@@ -178,6 +181,9 @@ def process_agent_command(text: str, conversation_id: str, user_id: str, channel
             # Persist to conversation history
             _persist_conversation(conversation_id, user_id, text, fast.text)
 
+            # Prevent frontend race condition where instant audio + status:done interrupts playback
+            time.sleep(0.2)
+
             _push(channel_layer, group, 'status', 'done')
             return True
 
@@ -195,8 +201,7 @@ def process_agent_command(text: str, conversation_id: str, user_id: str, channel
         response_text = ""
         sentence_buffer = ""
         has_error = False
-        import re
-        from concurrent.futures import ThreadPoolExecutor
+        has_error = False
 
         try:
             def handle_status(status_msg):
@@ -253,7 +258,6 @@ def process_agent_command(text: str, conversation_id: str, user_id: str, channel
             def send_error_tts():
                 generate_and_push_tts("Sorry, I ran into a system error.")
             
-            import threading
             threading.Thread(target=send_error_tts).start()
 
         if is_cancelled(conversation_id):

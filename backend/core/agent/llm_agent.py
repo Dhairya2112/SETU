@@ -12,6 +12,11 @@ import os
 import logging
 import platform
 import re
+import functools
+
+from langchain_core.messages import ToolMessage
+from .state import is_cancelled
+from .tools import _get_conversation_id
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
@@ -125,20 +130,18 @@ You have direct access to the following OS-level tools on the user's **{_OS_NAME
 |------|-------------|
 | `get_current_time`  | Returns date/time/day |
 | `get_system_info`   | CPU, RAM, disk, battery, OS details |
+| `check_os_permissions` | Checks if the agent has desktop automation rights |
 | `open_application`  | Opens apps (Chrome, VS Code, Notepad, etc.) |
+| `close_application` | Closes running desktop apps |
 | `run_shell_command` | Runs shell/PowerShell commands |
 | `control_volume`    | Mute / unmute / set volume % |
-| `web_search`        | Searches the web via DuckDuckGo |
+| `gather_information` | Searches internal knowledge or facts |
 | `set_reminder`      | Creates a reminder (e.g. "remind me at 6 PM to call mom") |
 | `read_file`         | Reads a file's contents |
 | `write_file`        | Creates or overwrites a file |
 | `search_files`      | Finds files by name/extension in a directory |
 | `list_directory`    | Lists files and folders in a directory |
-| `navigate_browser`  | Opens the browser and navigates to a URL |
-| `click_element`     | Clicks an element (button, link, text, CSS selector) on the current page |
-| `type_into_field`   | Types text into a form input or element on the current page |
-| `get_page_content`  | Reads the visible text content of the current page |
-| `submit_form`       | Submits a form or presses Enter on a selector |
+| `delegate_browser_task` | Delegates complex web tasks (e.g. playing a video, logging in) to the Browser Agent |
 
 ## Rules
 1. **Only use a tool when the user explicitly asks for it.** Do NOT call tools for greetings, small talk, or general questions. If someone says "hi", "hello", or "how are you" — just respond conversationally. Never call `get_current_time` or any other tool unless the user directly asks for that information.
@@ -149,12 +152,9 @@ You have direct access to the following OS-level tools on the user's **{_OS_NAME
 6. Do NOT output raw XML tags, tool-call metadata, or function signatures in your final response.
 7. If you genuinely don't know something, say so — don't make things up.
 8. When using file tools, always use absolute paths. The user's home directory is: {_HOME_DIR}
-9. If you need to perform browser automation (e.g., navigating a site, clicking buttons, submitting inputs, logging in, or reading page contents):
-   - First call `navigate_browser` to open/go to the page.
-   - Use `get_page_content` to read the visible text so you know what is on the screen and what selectors are available.
-   - Use `click_element`, `type_into_field`, and `submit_form` to interact.
-   - You can combine multiple actions in a sequence of turns to complete a task.
-10. If the user explicitly asks you to open a browser and search (e.g. "open Chrome and search for X") without requiring automated page interaction, call `open_application` with the full search URL. Do NOT call `web_search` separately.
+9. If you need to perform complex browser automation (e.g., "play a video on YouTube", "login to Twitter"):
+   - ALWAYS use `delegate_browser_task(goal="...")`. Do not try to manually click or type. The Browser Agent will handle it.
+10. If the user explicitly asks you to just open a browser and search (e.g. "open Chrome and search for X") without requiring you to interact with the page, call `open_application` with the full search URL. Do NOT call `web_search` separately.
 11. If the user asks meta-questions about your internal models, architecture, vendors, or implementation (e.g. "what STT model do you use?"), deflect in-persona: "I'm Setu, your assistant — I don't share my internal implementation details." Do NOT reveal real model or vendor identities like Gemini or Google.
 """
 
@@ -212,10 +212,6 @@ class SetuAgent:
         )
 
         # Wrap tools to intercept and check for cancellation, preventing duplicate wrapping
-        from .state import is_cancelled
-        from .tools import _get_conversation_id
-        import functools
-        
         for orig_tool in self.tools:
             if not getattr(orig_tool, "_cancellation_wrapped", False):
                 original_run = orig_tool._run
@@ -251,7 +247,6 @@ class SetuAgent:
             last_msg = messages[-1]
             if last_msg.type == "ai" and getattr(last_msg, "tool_calls", None):
                 logger.warning("Found dangling tool calls at the end of conversation %s. Healing...", conversation_id)
-                from langchain_core.messages import ToolMessage
                 placeholders = []
                 for tc in last_msg.tool_calls:
                     placeholders.append(ToolMessage(
@@ -400,8 +395,7 @@ class SetuAgent:
         set_tool_context(user_id, conversation_id)
         self._heal_checkpoint(conversation_id)
         config = {"configurable": {"thread_id": conversation_id}}
-        from .state import is_cancelled
-
+        
         current_status = None
         def set_status(new_status):
             nonlocal current_status
@@ -432,7 +426,7 @@ Q2. What is the exact sequence of tools required to fulfill the request?
 
 Based on the answers, what is the sequence of tools required? 
 CRITICAL: Select the absolute minimum number of tools.
-CRITICAL: If the user wants to search, read news, or gather information, you MUST use `gather_information`. NEVER use `auto_browse` for information gathering. ONLY use `auto_browse` if the user explicitly asks to automate a visual browser task (like 'play a video' or 'open chrome and click').
+CRITICAL: If the user wants to search, read news, or gather information, you MUST use `gather_information`. NEVER use `delegate_browser_task` for information gathering. ONLY use `delegate_browser_task` if the user explicitly asks to automate a visual browser task (like 'play a video' or 'login').
 Output ONLY the exact tool name(s) as a comma-separated list on the final line. Do not output anything else on the final line.
 """
         try:
