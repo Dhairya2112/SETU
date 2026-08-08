@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 class UserPreferences(me.EmbeddedDocument):
+    meta = {'strict': False}
     preferred_name = me.StringField(null=True, default=None)
     ai_provider = me.StringField(choices=["nvidia", "openrouter", "gemini"], default="nvidia")
     privacy_consent_granted = me.BooleanField(default=False)
@@ -21,6 +22,7 @@ class UserPreferences(me.EmbeddedDocument):
     whitelisted_paths = me.ListField(me.StringField(), default=list)
 
 class UserPermissions(me.EmbeddedDocument):
+    meta = {'strict': False}
     level_2_granted = me.BooleanField(default=False)
     level_2_granted_at = me.DateTimeField(null=True)
     level_3_tools = me.ListField(me.StringField(), default=list)
@@ -42,6 +44,7 @@ class User(me.Document):
     
     meta = {
         'collection': 'users',
+        'strict': False,
         'indexes': [
             'email',
             'user_id'

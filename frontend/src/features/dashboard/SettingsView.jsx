@@ -150,15 +150,23 @@ export function SettingsView({ profile, updatePreference, token, onLogout }) {
               </div>
             </div>
 
-            <div className="glass-panel rounded-3xl p-6 space-y-4 border border-red-500/20">
-              <h3 className="text-base font-bold text-red-400 mb-2 font-display">Danger Zone</h3>
-              <p className="text-xs text-zinc-500">Sign out of your current session.</p>
-              <button
-                onClick={onLogout}
-                className="w-full py-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-semibold transition-colors text-sm"
-              >
-                Log Out
-              </button>
+            <div className="glass-panel rounded-3xl p-6 space-y-4">
+              <h3 className="text-base font-bold text-white mb-2 font-display">Account & Authentication</h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-semibold text-white mb-0.5">Active Session</h4>
+                    <p className="text-xs text-zinc-500">Logged in as <span className="font-mono text-[#8052ff]">{profile?.username || 'User'}</span></p>
+                  </div>
+                  <button
+                    onClick={onLogout}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-colors text-xs font-bold uppercase tracking-wider"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                    Logout
+                  </button>
+                </div>
+              </div>
             </div>
 
           </div>

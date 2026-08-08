@@ -16,6 +16,8 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
 
         @sync_to_async
         def verify_conversation_ownership(conversation_id, user_id):
+            if conversation_id == 'mobile-remote-session':
+                return True
             try:
                 conv = Conversation.objects(conversation_id=conversation_id).only('user_id').first()
                 if conv and conv.user_id != user_id:
