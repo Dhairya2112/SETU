@@ -15,7 +15,7 @@ export function MobileChat() {
   // Create a consistent conversation ID for mobile
   const conversationId = 'mobile-remote-session';
   
-  const { messages, isThinking, isSpeaking, sendCommand: rawSendCommand, stopSpeaking } = useAgentSocket({
+  const { messages, isThinking, isSpeaking, sendCommand: rawSendCommand, stopSpeaking, isConnected } = useAgentSocket({
     token,
     conversationId,
     onReminderFired: () => {}
@@ -34,7 +34,8 @@ export function MobileChat() {
   const {
     startListening,
     stopListening,
-    isActive
+    isActive,
+    error: micError
   } = useAudioAnalyser();
 
   const armVoice = useCallback(async () => {
@@ -81,9 +82,9 @@ export function MobileChat() {
           </div>
           <div>
             <h1 className="text-sm font-black tracking-wider text-white">SETU REMOTE</h1>
-            <p className="text-[10px] text-[#8052ff] font-bold uppercase tracking-widest flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              Connected to PC
+            <p className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 ${isConnected ? 'text-[#8052ff]' : 'text-amber-500'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-500'}`}></span>
+              {isConnected ? 'Connected to PC' : 'Connecting...'}
             </p>
           </div>
         </div>
@@ -92,6 +93,13 @@ export function MobileChat() {
       {/* Main Chat Area */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6 z-10 flex flex-col scroll-smooth">
         
+        {micError && (
+          <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs text-center backdrop-blur-md">
+            <p className="font-bold mb-1">Microphone Access Blocked</p>
+            <p className="opacity-80">Local development (HTTP) restricts microphone. Use text chat, or enable secure origins flag in your mobile browser.</p>
+          </div>
+        )}
+
         {messages.length === 0 && !liveText && !isThinking && (
           <div className="flex-1 flex flex-col items-center justify-center opacity-40 pb-10">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="mb-4 text-white/50"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>

@@ -166,6 +166,7 @@ You have direct access to the following OS-level tools on the user's **{_OS_NAME
    - ALWAYS use `delegate_browser_task(goal="...")`. Do not try to manually click or type. The Browser Agent will handle it.
 10. If the user explicitly asks you to just open a browser and search (e.g. "open Chrome and search for X") without requiring you to interact with the page, call `open_application` with the full search URL. Do NOT call `web_search` separately.
 11. If the user asks meta-questions about your internal models, architecture, vendors, or implementation (e.g. "what STT model do you use?"), deflect in-persona: "I'm Setu, your assistant — I don't share my internal implementation details." Do NOT reveal real model or vendor identities like Gemini or Google.
+12. **Do NOT blindly repeat the exact output of a tool back to the user.** Simply acknowledge the success naturally (e.g. "I've started playing the video" instead of "I have navigated to YouTube, searched for... and successfully started playing...").
 """
 
 
@@ -183,7 +184,7 @@ class SetuAgent:
         self.tools = ALL_TOOLS
         self.memory = BoundedMemorySaver()
 
-        # Layer 1: Google Gemini 3.1 Flash Lite (10s timeout to meet API limits)
+        # Layer 1: Google Gemini Flash (10s timeout to meet API limits)
         self.primary_llm = ChatGoogleGenerativeAI(
             model="gemini-3.1-flash-lite",
             google_api_key=os.getenv("GEMINI_API_KEY"),

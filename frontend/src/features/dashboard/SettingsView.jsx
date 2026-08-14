@@ -211,7 +211,13 @@ export function SettingsView({ profile, updatePreference, token, onLogout }) {
               <tbody className="text-xs text-zinc-300 divide-y divide-white/5">
                 {auditLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-4 text-center text-zinc-500 italic">No activity logged yet.</td>
+                    <td colSpan={4} className="py-12">
+                      <div className="flex flex-col items-center justify-center text-zinc-500 opacity-60">
+                        <svg className="mb-3" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+                        <span className="text-sm tracking-wide">No activity logged yet</span>
+                        <span className="text-[10px] mt-1">Your agent's automated actions will appear here.</span>
+                      </div>
+                    </td>
                   </tr>
                 ) : (
                   auditLogs.map((log) => {

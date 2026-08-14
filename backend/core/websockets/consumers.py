@@ -100,8 +100,11 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
         
         # Signal cancellation to clear running threads/tasks on disconnect
         if hasattr(self, 'conversation_id'):
-            from core.agent.state import cancel_active_command
-            cancel_active_command(self.conversation_id)
+            # Only auto-cancel if it's a desktop session. Mobile networks are flaky and screens lock,
+            # so we shouldn't kill long-running background tasks just because the phone screen went to sleep.
+            if self.conversation_id != 'mobile-remote-session':
+                from core.agent.state import cancel_active_command
+                cancel_active_command(self.conversation_id)
 
     async def receive(self, text_data=None, bytes_data=None):
         if text_data:
@@ -157,7 +160,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                     # Decode base64 audio
                     audio_bytes = base64.b64decode(audio_base64)
 
-                    try:
+                    if True: # Previously redundant try block
                         # Load using soundfile from memory buffer
                         audio_io = io.BytesIO(audio_bytes)
                         data, samplerate = sf.read(audio_io)

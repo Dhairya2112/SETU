@@ -1,13 +1,24 @@
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { Login } from './components/Login';
-import { Dashboard } from './pages/Dashboard';
-import { Onboarding } from './pages/Onboarding';
-import { MobileChat } from './pages/MobileChat';
+import { Suspense, lazy, useEffect, useCallback, useRef } from 'react';
 import { NeuralMesh } from './components/NeuralMesh';
 import { TitleBar } from './components/TitleBar';
+import { AuthGuard } from './components/AuthGuard';
 import { useAppStore } from './store/useAppStore';
 
-import { useEffect, useCallback, useRef } from 'react';
+// Phase 1: Route-Based Lazy Loading
+const Landing = lazy(() => import('./pages/Landing'));
+const Login = lazy(() => import('./components/Login').then(module => ({ default: module.Login })));
+const Dashboard = lazy(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })));
+const Onboarding = lazy(() => import('./pages/Onboarding').then(module => ({ default: module.Onboarding })));
+const MobileChat = lazy(() => import('./pages/MobileChat').then(module => ({ default: module.MobileChat })));
+
+// Loading Fallback Skeleton
+const FullScreenLoader = () => (
+  <div className="w-full h-screen flex flex-col items-center justify-center bg-[#030303]">
+    <div className="w-12 h-12 rounded-full border-2 border-white/10 border-t-[#8052ff] animate-spin mb-4" />
+    <div className="text-xs font-mono text-zinc-500 tracking-widest">INITIALIZING SETU...</div>
+  </div>
+);
 
 function App() {
   const navigate = useNavigate();
@@ -76,21 +87,40 @@ function App() {
     navigate(onboardingCompleted ? '/dashboard' : '/onboarding/name');
   };
 
+  // Only render NeuralMesh on internal app routes, not on Landing
+  const isLanding = location.pathname === '/';
+
   return (
     <div 
-      className="flex flex-col h-screen w-screen overflow-hidden bg-[#030303] text-[var(--color-text-primary)] relative border border-white/10 select-none"
+      className={`flex flex-col w-screen bg-[#030303] text-[var(--color-text-primary)] relative border border-white/10 ${isLanding ? 'min-h-screen' : 'h-screen overflow-hidden'}`}
     >
-      {/* Do not render desktop TitleBar on mobile interface */}
-      {location.pathname !== '/mobile' && <TitleBar />}
-      <div className="flex-1 relative z-10 w-full flex overflow-hidden">
-        <NeuralMesh />
-        <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/auth" element={<Login onLoginSuccess={handleLoginSuccess} />} />
-          <Route path="/onboarding/*" element={<Onboarding />} />
-          <Route path="/dashboard/*" element={<Dashboard />} />
-          <Route path="/mobile" element={<MobileChat />} />
-        </Routes>
+      {/* Do not render desktop TitleBar on mobile interface or Landing page */}
+      {location.pathname !== '/mobile' && !isLanding && <TitleBar />}
+      <div className={`flex-1 relative z-10 w-full flex ${isLanding ? '' : 'overflow-hidden'}`}>
+        {!isLanding && <NeuralMesh />}
+        <Suspense fallback={<FullScreenLoader />}>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/auth" element={<Login onLoginSuccess={handleLoginSuccess} />} />
+            <Route 
+              path="/onboarding/*" 
+              element={
+                <AuthGuard requireOnboarding={false}>
+                  <Onboarding />
+                </AuthGuard>
+              } 
+            />
+            <Route 
+              path="/dashboard/*" 
+              element={
+                <AuthGuard requireOnboarding={true}>
+                  <Dashboard />
+                </AuthGuard>
+              } 
+            />
+            <Route path="/mobile" element={<MobileChat />} />
+          </Routes>
+        </Suspense>
       </div>
     </div>
   );

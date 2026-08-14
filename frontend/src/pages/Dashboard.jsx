@@ -69,6 +69,10 @@ export function Dashboard() {
       const res = await fetch(`http://${window.location.hostname}:8000/api/v1/user/mobile-pairing/`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
+      if (res.status === 401 || res.status === 403) {
+        handleLogout();
+        return;
+      }
       const data = await res.json();
       setPairingData(data);
     } catch(err) {
@@ -118,35 +122,6 @@ export function Dashboard() {
     logout();
     navigate('/auth');
   }, [logout, navigate]);
-
-  useEffect(() => {
-    if (!token) {
-      navigate('/auth');
-      return;
-    }
-    const completed = localStorage.getItem('setu_onboarding_completed') === 'true';
-    if (!completed) {
-      navigate('/onboarding/name');
-      return;
-    }
-    fetch(`http://${window.location.hostname}:8000/api/v1/user/profile/`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => {
-        if (res.status === 401 || res.status === 403) {
-          handleLogout();
-          throw new Error("Token expired, please log in again.");
-        }
-        return res.json();
-      })
-      .then(data => {
-        if (data && data.username) setUsername(data.username);
-      })
-      .catch(err => {
-        console.error("Profile fetch failed:", err);
-        handleLogout();
-      });
-  }, [token, navigate, handleLogout, setUsername]);
 
   // Poll audio level when listening
   useEffect(() => {
@@ -217,6 +192,7 @@ export function Dashboard() {
   ];
 
   const [history, setHistory] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [profile, setProfile] = useState({
     username: 'daved',
     email: 'daved@setu.local',
@@ -233,6 +209,7 @@ export function Dashboard() {
   // Load history
   useEffect(() => {
     if (activeTab === 'History' && token) {
+      setIsLoadingHistory(true);
       fetch(`http://${window.location.hostname}:8000/api/v1/conversations/`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
@@ -242,7 +219,8 @@ export function Dashboard() {
             setHistory(data.results);
           }
         })
-        .catch(console.error);
+        .catch(console.error)
+        .finally(() => setIsLoadingHistory(false));
     }
   }, [activeTab, token]);
 
@@ -334,15 +312,24 @@ export function Dashboard() {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`relative flex items-center h-12 rounded-2xl transition-all duration-300 group/btn overflow-hidden shadow-lg ${activeTab === item.id
-                  ? 'w-12 lg:w-48 bg-[#8052ff]/15 border border-[#8052ff]/40 shadow-[0_0_15px_rgba(128,82,255,0.2)]'
-                  : 'w-12 lg:hover:w-48 bg-white/5 border border-white/10 hover:bg-white/10 backdrop-blur-md'
-                }`}
+              className={`relative flex items-center h-12 rounded-2xl transition-all duration-300 group/btn overflow-hidden shadow-lg w-12 ${
+                activeTab === item.id
+                  ? 'lg:w-48'
+                  : 'lg:hover:w-48 bg-white/5 border border-white/10 hover:bg-white/10 backdrop-blur-md'
+              }`}
             >
-              <div className={`absolute left-0 w-12 h-12 flex items-center justify-center shrink-0 transition-colors ${activeTab === item.id ? 'text-[#8052ff]' : 'text-zinc-500 group-hover/btn:text-white'}`}>
+              {activeTab === item.id && (
+                <motion.div
+                  layoutId="sidebarActiveTab"
+                  className="absolute inset-0 bg-gradient-to-r from-[#8052ff]/20 to-[#592be8]/20 border border-[#8052ff]/40 rounded-2xl shadow-[inset_0_0_15px_rgba(128,82,255,0.1),0_0_15px_rgba(128,82,255,0.2)]"
+                  initial={false}
+                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                />
+              )}
+              <div className={`absolute left-0 w-12 h-12 flex items-center justify-center shrink-0 transition-colors z-10 ${activeTab === item.id ? 'text-[#8052ff]' : 'text-zinc-500 group-hover/btn:text-white'}`}>
                 {item.icon}
               </div>
-              <span className={`absolute left-12 whitespace-nowrap text-sm font-semibold tracking-wide transition-opacity duration-300 ${activeTab === item.id ? 'text-white opacity-100 lg:opacity-100' : 'text-zinc-300 opacity-0 lg:group-hover/btn:opacity-100'}`}>
+              <span className={`absolute left-12 whitespace-nowrap text-sm font-semibold tracking-wide transition-opacity duration-300 z-10 ${activeTab === item.id ? 'text-white opacity-100 lg:opacity-100' : 'text-zinc-300 opacity-0 lg:group-hover/btn:opacity-100'}`}>
                 {item.label}
               </span>
             </button>
@@ -353,15 +340,24 @@ export function Dashboard() {
         <div className="mt-auto pointer-events-auto">
           <button
             onClick={() => setActiveTab('Settings')}
-            className={`relative flex items-center h-12 rounded-2xl transition-all duration-300 group/btn overflow-hidden shadow-lg ${activeTab === 'Settings'
-                ? 'w-12 lg:w-48 bg-[#8052ff]/15 border border-[#8052ff]/40 shadow-[0_0_15px_rgba(128,82,255,0.2)]'
-                : 'w-12 lg:hover:w-48 bg-white/5 border border-white/10 hover:bg-white/10 backdrop-blur-md'
+            className={`relative flex items-center h-12 rounded-2xl transition-all duration-300 group/btn overflow-hidden shadow-lg w-12 ${
+                activeTab === 'Settings'
+                ? 'lg:w-48'
+                : 'lg:hover:w-48 bg-white/5 border border-white/10 hover:bg-white/10 backdrop-blur-md'
               }`}
           >
-            <div className={`absolute left-0 w-12 h-12 flex items-center justify-center shrink-0 transition-colors ${activeTab === 'Settings' ? 'text-[#8052ff]' : 'text-zinc-500 group-hover/btn:text-white'}`}>
+            {activeTab === 'Settings' && (
+              <motion.div
+                layoutId="sidebarActiveTab"
+                className="absolute inset-0 bg-gradient-to-r from-[#8052ff]/20 to-[#592be8]/20 border border-[#8052ff]/40 rounded-2xl shadow-[inset_0_0_15px_rgba(128,82,255,0.1),0_0_15px_rgba(128,82,255,0.2)]"
+                initial={false}
+                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+              />
+            )}
+            <div className={`absolute left-0 w-12 h-12 flex items-center justify-center shrink-0 transition-colors z-10 ${activeTab === 'Settings' ? 'text-[#8052ff]' : 'text-zinc-500 group-hover/btn:text-white'}`}>
               <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
             </div>
-            <span className={`absolute left-12 whitespace-nowrap text-sm font-semibold tracking-wide transition-opacity duration-300 ${activeTab === 'Settings' ? 'text-white opacity-100 lg:opacity-100' : 'text-zinc-300 opacity-0 lg:group-hover/btn:opacity-100'}`}>
+            <span className={`absolute left-12 whitespace-nowrap text-sm font-semibold tracking-wide transition-opacity duration-300 z-10 ${activeTab === 'Settings' ? 'text-white opacity-100 lg:opacity-100' : 'text-zinc-300 opacity-0 lg:group-hover/btn:opacity-100'}`}>
               Settings
             </span>
           </button>
@@ -427,8 +423,8 @@ export function Dashboard() {
 
                     {/* Bioluminescent core orb */}
                     <div className="relative w-64 h-64 flex items-center justify-center mb-8">
-                      <div className="absolute w-56 h-56 border border-dashed border-[#8052ff]/20 rounded-full animate-[spin_50s_linear_infinite] pointer-events-none" />
-                      <div className="absolute w-44 h-44 border border-dashed border-[var(--color-accent-purple)]/30 rounded-full animate-[spin_25s_linear_infinite_reverse] pointer-events-none" />
+                      <div className={`absolute w-56 h-56 border border-dashed rounded-full animate-[spin_50s_linear_infinite] pointer-events-none transition-colors duration-1000 ${isSpeaking ? 'border-emerald-500/30' : isThinking ? 'border-blue-500/30' : 'border-[#8052ff]/20'}`} />
+                      <div className={`absolute w-44 h-44 border border-dashed rounded-full animate-[spin_25s_linear_infinite_reverse] pointer-events-none transition-colors duration-1000 ${isSpeaking ? 'border-emerald-500/40' : isThinking ? 'border-blue-500/40' : 'border-[#8052ff]/30'}`} />
 
                       <div className="relative group z-10">
                         <AnimatePresence>
@@ -445,7 +441,7 @@ export function Dashboard() {
                                 duration: isSpeaking ? 1.2 : 2,
                                 ease: "easeInOut"
                               }}
-                              className={`absolute inset-0 rounded-full blur-xl pointer-events-none ${isSpeaking ? 'bg-amber-500/20' : 'bg-[#8052ff]/20'}`}
+                              className={`absolute inset-0 rounded-full blur-xl pointer-events-none transition-colors duration-1000 ${isSpeaking ? 'bg-emerald-500/40' : isThinking ? 'bg-blue-500/40' : 'bg-[#8052ff]/30'}`}
                             />
                           )}
                         </AnimatePresence>
@@ -456,12 +452,12 @@ export function Dashboard() {
                           onClick={toggleListen}
                           disabled={isThinking}
                           className={`relative z-20 w-28 h-28 rounded-full flex flex-col items-center justify-center transition-all duration-500 border ${isThinking
-                              ? 'bg-zinc-800/20 border-zinc-700 text-zinc-500 cursor-not-allowed'
+                              ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.2)]'
                               : isSpeaking
-                                ? 'bg-amber-500/10 border-amber-500/40 text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.2)]'
+                                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)]'
                                 : isActive
-                                  ? 'bg-[#8052ff]/20 border-white text-white shadow-[0_0_20px_rgba(128,82,255,0.3)]'
-                                  : 'bg-white/5 border-white/10 hover:bg-white/10 text-white'
+                                  ? 'bg-[#8052ff]/20 border-white text-white shadow-[inset_0_0_15px_rgba(128,82,255,0.2),0_0_20px_rgba(128,82,255,0.3)]'
+                                  : 'bg-white/5 border-white/10 hover:bg-white/10 text-white shadow-[inset_0_0_10px_rgba(255,255,255,0.05)]'
                             }`}
                         >
                           <div className="relative z-10 flex flex-col items-center justify-center font-sans">
@@ -798,7 +794,15 @@ export function Dashboard() {
                   </div>
 
                   <div className="space-y-4">
-                    {history.length === 0 ? (
+                    {isLoadingHistory ? (
+                      Array.from({ length: 3 }).map((_, idx) => (
+                        <div key={idx} className="w-full bg-white/[0.02] border border-white/5 p-6 rounded-2xl animate-pulse flex flex-col gap-3">
+                          <div className="h-5 w-1/3 bg-white/5 rounded-md" />
+                          <div className="h-4 w-1/4 bg-white/5 rounded-md" />
+                          <div className="h-4 w-1/2 bg-white/5 rounded-md mt-2" />
+                        </div>
+                      ))
+                    ) : history.length === 0 ? (
                       <p className="text-zinc-500 text-sm">No history found.</p>
                     ) : (history.map((conv, i) => {
                       const firstUserMsg = conv.messages?.find((m) => m.role === 'user');

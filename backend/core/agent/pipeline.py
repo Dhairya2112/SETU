@@ -200,6 +200,7 @@ def process_agent_command(text: str, conversation_id: str, user_id: str, channel
         # ── Run agent & stream response tokens in real-time ──────────────────
         response_text = ""
         sentence_buffer = ""
+        audio_buffer = ""
         has_error = False
 
         try:
@@ -239,10 +240,14 @@ def process_agent_command(text: str, conversation_id: str, user_id: str, channel
                             sentence_buffer = sentence_buffer[split_idx:]
                             
                             if complete_sentence:
-                                tts_executor.submit(generate_and_push_tts, complete_sentence)
+                                audio_buffer += complete_sentence + " "
+                                if len(audio_buffer.split()) >= 8 or '\n' in complete_sentence:
+                                    tts_executor.submit(generate_and_push_tts, audio_buffer.strip())
+                                    audio_buffer = ""
                 
-                if sentence_buffer.strip():
-                    tts_executor.submit(generate_and_push_tts, sentence_buffer.strip())
+                final_audio = audio_buffer + sentence_buffer
+                if final_audio.strip():
+                    tts_executor.submit(generate_and_push_tts, final_audio.strip())
 
         except Exception as e:
             logger.error("LLM stream failed for conversation %s: %s", conversation_id, e)

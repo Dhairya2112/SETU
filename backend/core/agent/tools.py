@@ -39,10 +39,13 @@ APP_ALIASES: dict[str, list[str]] = {
     "terminal": ["Terminal", "iterm", "wt", "cmd"] if platform.system() in ["Windows", "Darwin"] else ["gnome-terminal", "x-terminal-emulator"],
     # System
     "notepad": ["TextEdit", "notepad"] if platform.system() in ["Windows", "Darwin"] else ["gedit", "nano"],
-    "calculator": ["Calculator", "calc"] if platform.system() in ["Windows", "Darwin"] else ["gnome-calculator"],
+    "calculator": ["CalculatorApp", "Calculator", "calc"] if platform.system() in ["Windows", "Darwin"] else ["gnome-calculator"],
     "file explorer": ["Finder", "explorer"] if platform.system() in ["Windows", "Darwin"] else ["nautilus"],
     "explorer": ["Finder", "explorer"] if platform.system() in ["Windows", "Darwin"] else ["nautilus"],
     "files": ["Finder", "explorer"] if platform.system() in ["Windows", "Darwin"] else ["nautilus"],
+    "powerpoint": ["powerpnt", "powerpoint"],
+    "word": ["winword", "word"],
+    "excel": ["excel"],
     # Media
     "spotify": ["Spotify", "spotify"],
     "vlc": ["VLC", "vlc"],
@@ -252,8 +255,8 @@ def open_application(app_name: str, file_path: str = "") -> str:
         return PERMISSION_DENIED_MSG
 
     # Prevent shell injection: reject any input containing shell command separators or redirects
-    if any(char in app_name for char in ['&', '|', ';', '>', '<', '`', '$', '\n', '\r']):
-        msg = "🚫 Invalid application name format. Safety block."
+    if any(char in app_name + file_path for char in ['&', '|', ';', '>', '<', '`', '$', '\n', '\r', '"']):
+        msg = "🚫 Invalid application name or file path format. Safety block."
         _log("open_application", app_name, msg, "blocked")
         return msg
 
@@ -350,21 +353,32 @@ def open_application(app_name: str, file_path: str = "") -> str:
         for candidate in candidates:
             try:
                 if platform.system() == "Windows":
-                    resolved = find_app_path(candidate)
-                    if not resolved:
-                        if candidate in ["explorer", "cmd", "wt", "calc", "notepad"]:
+                    safe_candidate = candidate.replace("'", "''")
+                    ps_script = f"""
+                    $app = Get-StartApps | Where-Object {{ $_.Name -like '*{safe_candidate}*' }} | Select-Object -First 1
+                    if ($app) {{ Write-Output $app.AppID }} else {{ Write-Output "" }}
+                    """
+                    res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], capture_output=True, text=True, timeout=10)
+                    app_id = res.stdout.strip()
+                    
+                    if app_id and not file_path:
+                        subprocess.Popen(['explorer.exe', f'shell:AppsFolder\\{app_id}'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    else:
+                        resolved = find_app_path(candidate)
+                        if not resolved:
                             resolved = candidate
+                        if file_path:
+                            # Prevent cmd.exe from stripping outer quotes by wrapping the entire command in another set of quotes
+                            cmd = f'""{resolved}" "{file_path}""'
                         else:
-                            continue
-                    cmd = f'"{resolved}"' if resolved != candidate else resolved
-                    if file_path:
-                        cmd += f' "{file_path}"'
-                    subprocess.Popen(
-                        cmd,
-                        shell=True,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
+                            cmd = f'"{resolved}"'
+                            
+                        subprocess.Popen(
+                            cmd,
+                            shell=True,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
                 elif platform.system() == "Darwin":
                     # On Mac, 'open -a' is the native way to launch apps by name
                     cmd_args = ["open", "-a", candidate]
@@ -443,22 +457,42 @@ def close_application(app_name: str) -> str:
         _log("close_application", app_name, PERMISSION_DENIED_MSG, "denied")
         return PERMISSION_DENIED_MSG
         
+    if any(char in app_name for char in ['&', '|', ';', '>', '<', '`', '$', '\n', '\r', '"']):
+        msg = "🚫 Invalid application name format. Safety block."
+        _log("close_application", app_name, msg, "blocked")
+        return msg
+
     try:
         name_lower = app_name.strip().lower()
+        safe_name = name_lower.replace("'", "''")
         candidates = APP_ALIASES.get(name_lower, [name_lower])
         
         success = False
         error_msgs = []
         
         if platform.system() == "Windows":
-            for candidate in candidates:
-                exe_name = candidate if candidate.endswith(".exe") else f"{candidate}.exe"
-                res = subprocess.run(f'taskkill /IM "{exe_name}" /T /F', shell=True, capture_output=True, text=True)
-                if res.returncode == 0:
-                    success = True
-                    break
-                else:
-                    error_msgs.append(res.stderr.strip() or res.stdout.strip())
+            ps_script = f"""
+            $procs = Get-Process | Where-Object {{ $_.ProcessName -eq '{safe_name}' -or $_.MainWindowTitle -like '*{safe_name}*' }}
+            if ($procs) {{
+                $procs | Stop-Process -Force
+                Write-Output "SUCCESS"
+            }} else {{
+                Write-Output "NOT_FOUND"
+            }}
+            """
+            res_ps = subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], capture_output=True, text=True, timeout=10)
+            
+            if "SUCCESS" in res_ps.stdout:
+                success = True
+            else:
+                for candidate in candidates:
+                    exe_name = candidate if candidate.endswith(".exe") else f"{candidate}.exe"
+                    res = subprocess.run(f'taskkill /IM "{exe_name}" /T /F', shell=True, capture_output=True, text=True)
+                    if res.returncode == 0:
+                        success = True
+                        break
+                    else:
+                        error_msgs.append(res.stderr.strip() or res.stdout.strip())
         elif platform.system() == "Darwin":
             for candidate in candidates:
                 res = subprocess.run(['killall', candidate], capture_output=True, text=True)

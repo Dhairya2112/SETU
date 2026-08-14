@@ -31,13 +31,13 @@ _PATTERNS = {
     'GREETING': {
         'patterns': [
             # English greetings
-            r'^(hey|hi|hello|hiya|howdy|yo|sup|whats\s*up|what\'s\s*up|yo\s+what\'s\s*up)(\s+(setu|there|buddy|bro|friend|guy))?$',
-            r'^good\s+(morning|afternoon|evening|day)(\s+(setu|there|buddy|bro|friend))?$',
+            r'^(hey|hi|hello|hiya|howdy|yo|sup|whats\s*up|what\'s\s*up|yo\s+what\'s\s*up)(\s+(setu|sidhu|situ|there|buddy|bro|friend|guy))?$',
+            r'^good\s+(morning|afternoon|evening|day)(\s+(setu|sidhu|situ|there|buddy|bro|friend))?$',
             # Hindi / Hinglish greetings
-            r'^(namaste|namaskar|pranam|ram\s+ram|radhe\s+radhe|jai\s+shree\s+krishna)(\s+(setu|bhai|bhaiya|babu))?$',
-            r'^(suno|suniye)(\s+setu)?$',
+            r'^(namaste|namaskar|pranam|ram\s+ram|radhe\s+radhe|jai\s+shree\s+krishna)(\s+(setu|sidhu|situ|bhai|bhaiya|babu))?$',
+            r'^(suno|suniye)(\s+(setu|sidhu|situ))?$',
             # Just the wake word by itself = greeting
-            r'^setu$',
+            r'^(setu|sidhu|situ)$',
         ],
         'responses': [
             "Hey {name}! What can I do for you?",

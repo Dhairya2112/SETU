@@ -49,7 +49,11 @@ class BrowserManager:
         self.playwright = await async_playwright().start()
         import os
         headless = os.getenv("PLAYWRIGHT_HEADLESS", "False").lower() == "true"
-        self.browser = await self.playwright.chromium.launch(headless=headless, slow_mo=300)
+        self.browser = await self.playwright.chromium.launch(
+            headless=headless, 
+            slow_mo=300,
+            args=['--start-maximized', '--window-position=0,0']
+        )
 
     def _cleanup_loop(self):
         while self.running:
@@ -82,10 +86,11 @@ class BrowserManager:
 
         logger.info("Launching new browser context for user %s", user_id)
         context = await self.browser.new_context(
-            viewport={"width": 1280, "height": 720},
+            no_viewport=True,
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
+        await page.bring_to_front()
 
         self.sessions[user_id] = {
             "context": context,

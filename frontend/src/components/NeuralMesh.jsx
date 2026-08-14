@@ -10,7 +10,7 @@ export const NeuralMesh = () => {
     if (!ctx) return;
 
     let particles = [];
-    // Increase count to feel like a rich constellation/cosmos (e.g. 150 particles)
+    // Subtler count for a professional, non-distracting background
     const particleCount = Math.min(180, Math.floor(window.innerWidth / 8));
     const connectionDistance = 120;
     const mouseDistance = 180;
@@ -19,16 +19,16 @@ export const NeuralMesh = () => {
     let time = 0;
     let animationFrameId;
 
-    // Single centered slowly drifting soft violet pulse representing Plum Voltage authority glow
-    const pulseCloud = { x: 0.5, y: 0.5, vx: 0.00005, vy: -0.00005, r: 0.45, alpha: 0.05 };
+    // Single centered slowly drifting soft violet pulse
+    const pulseCloud = { x: 0.5, y: 0.5, vx: 0.00005, vy: -0.00005, r: 0.45, alpha: 0.05 }; // subtle pulse
 
     class Particle {
       constructor() {
         this.x = Math.random() * canvas.width;
         this.y = Math.random() * canvas.height;
-        this.vx = (Math.random() - 0.5) * 0.15; // Slow drift
+        this.vx = (Math.random() - 0.5) * 0.15; // slow drift
         this.vy = (Math.random() - 0.5) * 0.15;
-        this.baseRadius = Math.random() * 2 + 1; // Size scale 2px - 6px diameter (1px - 3px radius)
+        this.baseRadius = Math.random() * 2 + 1; // Size scale down
         this.radius = this.baseRadius;
         this.pulseSpeed = Math.random() * 0.01 + 0.003;
         
@@ -44,11 +44,6 @@ export const NeuralMesh = () => {
           this.shape = 'square';
         }
 
-        // Colors corresponding to Dala design system:
-        // Plum Voltage (#8052ff) -> 128, 82, 255 (50% probability)
-        // Bone (#ffffff) -> 255, 255, 255 (30% probability)
-        // Lichen (#15846e) -> 21, 132, 110 (12% probability)
-        // Amber Spark (#ffb829) -> 255, 184, 41 (8% probability)
         const rand = Math.random();
         if (rand < 0.5) {
           this.color = '128, 82, 255'; // Plum Voltage
@@ -120,9 +115,8 @@ export const NeuralMesh = () => {
       if (!ctx || !canvas) return;
       time += 0.5;
 
-      // Dark obsidian background base
-      ctx.fillStyle = '#030303';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Clear background for transparency
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Single very subtle violet pulse against infinite black
       ctx.globalCompositeOperation = 'screen';

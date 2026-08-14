@@ -10,34 +10,6 @@ export function Onboarding() {
   const navigate = useNavigate();
   const { token, setEulaAccepted, setOnboardingCompleted, setUsername } = useAppStore();
 
-  useEffect(() => {
-    if (!token) {
-      navigate('/auth');
-      return;
-    }
-    fetch(`http://${window.location.hostname}:8000/api/v1/user/profile/`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-    .then(res => {
-      if (res.status === 401 || res.status === 403) {
-        navigate('/auth');
-        return;
-      }
-      return res.json();
-    })
-    .then(data => {
-      if (data?.preferences?.privacy_consent_granted === true) {
-        setOnboardingCompleted(true);
-        setEulaAccepted(true);
-        if (data.preferences.preferred_name) {
-          setUsername(data.preferences.preferred_name);
-        }
-        navigate('/dashboard');
-      }
-    })
-    .catch(console.error);
-  }, [navigate, token, setOnboardingCompleted, setEulaAccepted, setUsername]);
-
   return (
     <div className="w-full min-h-screen bg-transparent text-white flex flex-col items-center justify-center relative overflow-hidden px-6 font-sans">
       {/* Persistent Progress Indicator */}
