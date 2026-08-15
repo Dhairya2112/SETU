@@ -1,6 +1,8 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 
+active_mobile_connections = {}
+
 class AgentStreamConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         if not self.scope["user"]:
@@ -35,7 +37,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
         # Conversation-scoped group — receives agent streaming messages
         import uuid
         self.connection_id = uuid.uuid4().hex
-        self.room_group_name = f'chat_{self.conversation_id}_{self.connection_id}'
+        self.room_group_name = f'chat_{self.conversation_id}'
         # User-scoped group — receives reminder notifications (any session)
         self.user_group_name = f'user_{self.user_id}'
 
@@ -67,9 +69,15 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                 device_name = f"Android ({ua_model})"
         
         self.device_name = device_name
+        
+        query_string = self.scope.get('query_string', b'').decode('utf-8')
+        is_mobile = 'device=mobile' in query_string or any(m in user_agent for m in ["iPhone", "iPad", "Android", "Mobile", "Windows Phone"])
+        self.is_mobile = is_mobile
+
+        if is_mobile:
+            active_mobile_connections[self.user_id] = self.connection_id
 
         # Broadcast device connection status
-        is_mobile = (self.conversation_id == 'mobile-remote-session')
         await self.channel_layer.group_send(
             self.user_group_name,
             {
@@ -81,7 +89,12 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
         )
 
     async def disconnect(self, close_code):
-        is_mobile = (getattr(self, 'conversation_id', '') == 'mobile-remote-session')
+        is_mobile = getattr(self, 'is_mobile', False)
+        
+        if is_mobile:
+            if active_mobile_connections.get(self.user_id) == self.connection_id:
+                del active_mobile_connections[self.user_id]
+                
         if hasattr(self, 'user_group_name'):
             await self.channel_layer.group_send(
                 self.user_group_name,
@@ -102,14 +115,29 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
         if hasattr(self, 'conversation_id'):
             # Only auto-cancel if it's a desktop session. Mobile networks are flaky and screens lock,
             # so we shouldn't kill long-running background tasks just because the phone screen went to sleep.
-            if self.conversation_id != 'mobile-remote-session':
+            if not is_mobile:
                 from core.agent.state import cancel_active_command
                 cancel_active_command(self.conversation_id)
 
     async def receive(self, text_data=None, bytes_data=None):
+        is_mobile = getattr(self, 'is_mobile', False)
+        if is_mobile and active_mobile_connections.get(self.user_id) != self.connection_id:
+            await self.close(code=4009)
+            return
+
         if text_data:
             data = json.loads(text_data)
             
+            if data.get('action') == 'switch_conversation':
+                await self.channel_layer.group_send(
+                    self.user_group_name,
+                    {
+                        'type': 'switch_conversation',
+                        'conversation_id': data['conversation_id']
+                    }
+                )
+                return
+
             # Handle user cancellation request
             if data.get('type') == 'cancel' or data.get('action') == 'cancel':
                 from core.agent.state import cancel_active_command
@@ -230,11 +258,18 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                             return
 
                         if text_command.strip():
-                            # Send transcribed command back to user
-                            await self.send(text_data=json.dumps({
-                                'chunk_type': 'text_user',
-                                'message': text_command
-                            }))
+                            # Broadcast transcribed command to all devices in this conversation
+                            await self.channel_layer.group_send(
+                                self.room_group_name,
+                                {
+                                    'type': 'agent_message',
+                                    'chunk_type': 'text_user',
+                                    'message': text_command,
+                                    'sender_id': self.connection_id,
+                                    'is_audio_transcription': True,
+                                    'source': 'mobile' if is_mobile else 'desktop'
+                                }
+                            )
 
                             # Trigger agent command process task
                             import asyncio
@@ -268,6 +303,19 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                     'chunk_type': 'status',
                     'message': 'acknowledged'
                 }))
+                
+                # Broadcast the typed command to other devices in the room
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        'type': 'agent_message',
+                        'chunk_type': 'text_user',
+                        'message': command_text,
+                        'sender_id': self.connection_id,
+                        'is_audio_transcription': False,
+                        'source': 'mobile' if is_mobile else 'desktop'
+                    }
+                )
 
                 import asyncio
                 from core.agent.pipeline import process_agent_command
@@ -283,9 +331,15 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
 
     # ── Handler: agent streaming chunks (text / audio / status) ──
     async def agent_message(self, event):
+        # Prevent echoing text_user back to the sender who already appended it locally
+        if event.get('chunk_type') == 'text_user':
+            if event.get('sender_id') == self.connection_id and not event.get('is_audio_transcription'):
+                return # Skip echoing back typed text to the sender
+
         await self.send(text_data=json.dumps({
             'chunk_type': event.get('chunk_type', 'text'),
-            'message': event['message']
+            'message': event['message'],
+            'source': event.get('source', 'desktop')
         }))
 
     # ── Handler: reminder fired by background scheduler ──
@@ -308,7 +362,7 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
 
     # ── Handler: ping request to broadcast status ──
     async def device_ping(self, event):
-        is_mobile = (getattr(self, 'conversation_id', '') == 'mobile-remote-session')
+        is_mobile = getattr(self, 'is_mobile', False)
         await self.channel_layer.group_send(
             self.user_group_name,
             {
@@ -318,4 +372,11 @@ class AgentStreamConsumer(AsyncWebsocketConsumer):
                 'device_name': getattr(self, 'device_name', 'Mobile Remote') if is_mobile else 'Primary Desktop'
             }
         )
+
+    # ── Handler: switch conversation ──
+    async def switch_conversation(self, event):
+        await self.send(text_data=json.dumps({
+            'chunk_type': 'switch_conversation',
+            'conversation_id': event['conversation_id']
+        }))
 

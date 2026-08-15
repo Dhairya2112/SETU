@@ -40,7 +40,7 @@ const formatProvider = (prov) => {
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const { token, conversationId, setUsername, logout } = useAppStore();
+  const { token, conversationId, setConversationId, setUsername, logout } = useAppStore();
   const [activeTab, setActiveTabState] = useState(() => {
     return localStorage.getItem('setu_active_tab') || 'TaskFeed';
   });
@@ -112,6 +112,9 @@ export function Dashboard() {
       setTimeout(() => {
         setToasts(prev => prev.filter(t => t.id !== toastId));
       }, 8000);
+    },
+    onSwitchConversation: (newId) => {
+      setConversationId(newId);
     }
   });
 
@@ -638,7 +641,15 @@ export function Dashboard() {
                         {getTasksFromMessages().map((task) => (
                           <div key={task.id} className="border border-white/5 bg-white/[0.01] backdrop-blur-[2px] rounded-3xl p-5 shadow-lg space-y-3.5 transition-all">
                             <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-mono text-zinc-500">TASK IDENTIFIER</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-mono text-zinc-500">TASK IDENTIFIER</span>
+                                {task.source === 'mobile' && (
+                                  <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-[9px] font-bold text-blue-400 uppercase tracking-wider flex items-center gap-1">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
+                                    Mobile Command
+                                  </span>
+                                )}
+                              </div>
                               <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
                                 task.status === 'completed'
                                   ? 'bg-[#15846e]/10 border border-[#15846e]/20 text-[#15846e]'
@@ -791,6 +802,21 @@ export function Dashboard() {
                       <h2 className="text-3xl font-bold text-white tracking-wide font-display">History</h2>
                       <p className="text-sm text-zinc-400 mt-2">Review your previous discussions and synthesis sessions.</p>
                     </div>
+                    <button 
+                      onClick={() => {
+                        const newId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+                          const r = Math.random() * 16 | 0;
+                          const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                          return v.toString(16);
+                        });
+                        setConversationId(newId);
+                        setActiveTab('TaskFeed');
+                      }}
+                      className="px-4 py-2 bg-[#8052ff] hover:bg-[#916bff] text-white rounded-xl text-sm font-bold transition-colors shadow-[0_0_15px_rgba(128,82,255,0.3)] flex items-center gap-2"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                      New Session
+                    </button>
                   </div>
 
                   <div className="space-y-4">
@@ -872,6 +898,18 @@ export function Dashboard() {
                               ) : (
                                 <p className="text-xs text-zinc-500 italic">No messages recorded in this session.</p>
                               )}
+                              <div className="mt-4 pt-4 border-t border-white/5 flex justify-end">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConversationId(conv.conversation_id);
+                                    setActiveTab('TaskFeed');
+                                  }}
+                                  className="px-4 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-semibold transition-colors"
+                                >
+                                  Resume Session
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1167,7 +1205,7 @@ export function Dashboard() {
 
               <div className="bg-white p-4 rounded-2xl shadow-inner mb-6">
                 {pairingData && pairingData.url ? (
-                  <QRCodeSVG value={pairingData.url} size={200} level="H" includeMargin={true} />
+                  <QRCodeSVG value={`${pairingData.url}&conversationId=${conversationId || ''}`} size={200} level="H" includeMargin={true} />
                 ) : (
                   <div className="w-[200px] h-[200px] flex items-center justify-center bg-zinc-100 rounded-xl">
                     <div className="w-8 h-8 border-2 border-[#8052ff] border-t-transparent rounded-full animate-spin"></div>

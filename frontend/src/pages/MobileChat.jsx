@@ -7,18 +7,25 @@ import { useAudioAnalyser } from '../hooks/useAudioAnalyser';
 export function MobileChat() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
+  const queryConversationId = searchParams.get('conversationId');
   const navigate = useNavigate();
   
   const [inputText, setInputText] = useState('');
   const [liveText, setLiveText] = useState('');
   
-  // Create a consistent conversation ID for mobile
-  const conversationId = 'mobile-remote-session';
+  // Connect to the desktop's active conversation to sync messages in real-time
+  const conversationId = queryConversationId || 'mobile-remote-session';
   
-  const { messages, isThinking, isSpeaking, sendCommand: rawSendCommand, stopSpeaking, isConnected } = useAgentSocket({
+  const { messages, isThinking, isSpeaking, sendCommand: rawSendCommand, stopSpeaking, isConnected, switchConversation } = useAgentSocket({
     token,
     conversationId,
-    onReminderFired: () => {}
+    isMobileClient: true,
+    onReminderFired: () => {},
+    onSwitchConversation: (newId) => {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.set('conversationId', newId);
+      navigate(`/mobile?${newParams.toString()}`);
+    }
   });
 
   const sendCommand = useCallback((text) => {
@@ -88,6 +95,20 @@ export function MobileChat() {
             </p>
           </div>
         </div>
+        <button 
+          onClick={() => {
+            const newId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+              const r = Math.random() * 16 | 0;
+              const v = c === 'x' ? r : (r & 0x3 | 0x8);
+              return v.toString(16);
+            });
+            switchConversation(newId);
+          }}
+          className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-zinc-300 hover:text-white hover:bg-white/10 active:scale-95 transition-all"
+          title="Start New Session"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
       </div>
 
       {/* Main Chat Area */}

@@ -1,7 +1,6 @@
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Suspense, lazy, useEffect, useCallback, useRef } from 'react';
 import { NeuralMesh } from './components/NeuralMesh';
-import { TitleBar } from './components/TitleBar';
 import { AuthGuard } from './components/AuthGuard';
 import { useAppStore } from './store/useAppStore';
 
@@ -94,8 +93,6 @@ function App() {
     <div 
       className={`flex flex-col w-screen bg-[#030303] text-[var(--color-text-primary)] relative border border-white/10 ${isLanding ? 'min-h-screen' : 'h-screen overflow-hidden'}`}
     >
-      {/* Do not render desktop TitleBar on mobile interface or Landing page */}
-      {location.pathname !== '/mobile' && !isLanding && <TitleBar />}
       <div className={`flex-1 relative z-10 w-full flex ${isLanding ? '' : 'overflow-hidden'}`}>
         {!isLanding && <NeuralMesh />}
         <Suspense fallback={<FullScreenLoader />}>

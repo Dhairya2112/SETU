@@ -21,6 +21,7 @@ export function deriveTasksFromMessages(messages, isThinking, isSpeaking, active
       currentTask = {
         id: `task-${index}`,
         command: msg.text,
+        source: msg.source,
         status: 'completed',
         steps: [],
         result: '',

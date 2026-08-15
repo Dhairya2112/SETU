@@ -63,6 +63,7 @@ export const useAppStore = create((set) => ({
     localStorage.removeItem('setu_conversation_id');
     localStorage.removeItem('setu_onboarding_completed');
     localStorage.removeItem('setu_eula_accepted');
+    localStorage.removeItem('setu_active_tab');
     const newId = generateUUID();
     localStorage.setItem('setu_conversation_id', newId);
     set({

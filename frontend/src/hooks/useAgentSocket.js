@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-export function useAgentSocket({ token, conversationId, onReminderFired }) {
+export function useAgentSocket({ token, conversationId, onReminderFired, isMobileClient = false, onSwitchConversation }) {
     const [isConnected, setIsConnected] = useState(false);
     const [messages, setMessages] = useState([]);
     const [isThinking, setIsThinking] = useState(false);
@@ -90,7 +90,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
       const connect = () => {
         if (isManualCleanup) return;
         
-        const wsUrl = `ws://${window.location.hostname}:8000/ws/stream/${conversationId}/?token=${token}`;
+        const wsUrl = `ws://${window.location.hostname}:8000/ws/stream/${conversationId}/?token=${token}${isMobileClient ? '&device=mobile' : ''}`;
         console.log(`Attempting WebSocket connection... (Attempt ${reconnectAttempts + 1})`);
         const ws = new WebSocket(wsUrl);
         socketRef.current = ws;
@@ -125,7 +125,11 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
             });
           } else if (data.chunk_type === 'text_user') {
             setIsThinking(false);
-            setMessages(prev => [...prev, { role: 'user', text: data.message }]);
+            setMessages(prev => [...prev, { role: 'user', text: data.message, source: data.source }]);
+          } else if (data.chunk_type === 'switch_conversation') {
+              if (onSwitchConversation && data.conversation_id && data.conversation_id !== conversationId) {
+                  onSwitchConversation(data.conversation_id);
+              }
           } else if (data.chunk_type === 'audio') {
               if (isInterruptedRef.current) return;
               
@@ -242,5 +246,11 @@ export function useAgentSocket({ token, conversationId, onReminderFired }) {
     }
   }, []);
 
-  return { isConnected, messages, isThinking, isSpeaking, sendCommand, stopSpeaking, activeStatus, cancelTask, permissionRequest, resolvePermissionRequest, mobileConnected, connectedDeviceName };
+  const switchConversation = useCallback((newId) => {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ action: 'switch_conversation', conversation_id: newId }));
+    }
+  }, []);
+
+  return { isConnected, messages, isThinking, isSpeaking, sendCommand, stopSpeaking, activeStatus, cancelTask, permissionRequest, resolvePermissionRequest, mobileConnected, connectedDeviceName, switchConversation };
 }

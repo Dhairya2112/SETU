@@ -133,8 +133,6 @@ function NetworkNode() {
 export default function Landing() {
   const containerRef = useRef();
   const lenisRef = useRef();
-  const cursorRef = useRef(null);
-  const [isHovering, setIsHovering] = useState(false);
   const [isLowPower, setIsLowPower] = useState(false);
 
   useEffect(() => {
@@ -145,22 +143,6 @@ export default function Landing() {
     window.addEventListener('resize', checkLowPower);
     return () => window.removeEventListener('resize', checkLowPower);
   }, []);
-
-  // Use GSAP quickTo to completely bypass React render cycles for massive performance boost
-  useEffect(() => {
-    if (!isLowPower && cursorRef.current) {
-      const xTo = gsap.quickTo(cursorRef.current, "x", { duration: 0.1, ease: "power3" });
-      const yTo = gsap.quickTo(cursorRef.current, "y", { duration: 0.1, ease: "power3" });
-      
-      const updateCursor = (e) => {
-        xTo(e.clientX - 16);
-        yTo(e.clientY - 16);
-      };
-      
-      window.addEventListener('mousemove', updateCursor);
-      return () => window.removeEventListener('mousemove', updateCursor);
-    }
-  }, [isLowPower]);
 
   useEffect(() => {
     const updateLenis = (time) => {
@@ -269,22 +251,8 @@ export default function Landing() {
 
   return (
     <ReactLenis root ref={lenisRef} autoRaf={false} options={{ syncTouch: true, smoothTouch: true }}>
-      <div ref={containerRef} className="bg-[#030303] min-h-screen text-white font-sans overflow-hidden selection:bg-[#8052ff]/30 relative cursor-none">
+      <div ref={containerRef} className="bg-[#030303] min-h-screen text-white font-sans overflow-hidden selection:bg-[#8052ff]/30 relative">
         
-        {/* Custom Glowing Cursor - Position controlled by GSAP quickTo outside of React state */}
-        {!isLowPower && (
-          <div 
-            ref={cursorRef}
-            className="fixed top-0 left-0 w-8 h-8 rounded-full pointer-events-none z-50 border border-[#8052ff]/50 flex items-center justify-center transition-all duration-300 ease-out backdrop-blur-[2px] mix-blend-screen"
-            style={{ 
-              transform: `scale(${isHovering ? 1.5 : 1})`,
-              backgroundColor: isHovering ? 'rgba(128,82,255,0.1)' : 'transparent'
-            }}
-          >
-             <div className="w-1.5 h-1.5 bg-[#8052ff] rounded-full shadow-[0_0_15px_#8052ff]" />
-          </div>
-        )}
-
         {/* Global Vast Background */}
         <div className="fixed inset-0 z-0 pointer-events-none opacity-40 mix-blend-screen" style={{ maskImage: 'linear-gradient(to bottom, black 20%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, black 20%, transparent 100%)' }}>
           <NeuralMesh />
@@ -341,8 +309,6 @@ export default function Landing() {
                 >
                    <a 
                      href="/dashboard" 
-                     onMouseEnter={() => setIsHovering(true)} 
-                     onMouseLeave={() => setIsHovering(false)} 
                      className="px-8 py-4 bg-white text-black font-bold rounded-xl hover:scale-105 transition-transform flex items-center gap-2 shadow-[0_0_30px_rgba(255,255,255,0.2)]"
                    >
                       Launch Workspace
@@ -350,8 +316,6 @@ export default function Landing() {
                    </a>
                    <a 
                      href="#architecture" 
-                     onMouseEnter={() => setIsHovering(true)} 
-                     onMouseLeave={() => setIsHovering(false)} 
                      className="px-8 py-4 bg-white/5 border border-white/10 text-white font-bold rounded-xl hover:bg-white/10 transition-colors backdrop-blur-md"
                    >
                       View Architecture
@@ -474,8 +438,6 @@ export default function Landing() {
                    <div 
                      key={i} 
                      className="reveal-item p-10 rounded-[40px] bg-[#09090b]/80 border border-white/5 backdrop-blur-xl hover:bg-white/[0.03] hover:border-white/10 transition-all duration-300 group shadow-xl"
-                     onMouseEnter={() => setIsHovering(true)} 
-                     onMouseLeave={() => setIsHovering(false)}
                    >
                       <div className="w-16 h-16 rounded-2xl mb-8 flex items-center justify-center transition-transform group-hover:scale-110 group-hover:-rotate-6" style={{ backgroundColor: `${item.c}15`, color: item.c }}>
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -561,8 +523,6 @@ export default function Landing() {
              
              <a 
                href="/dashboard" 
-               onMouseEnter={() => setIsHovering(true)} 
-               onMouseLeave={() => setIsHovering(false)} 
                className="reveal-item mt-20 px-14 py-6 bg-white text-black font-black rounded-2xl hover:scale-105 transition-transform shadow-[0_0_40px_rgba(255,255,255,0.3)] text-xl flex items-center gap-3"
              >
                 Initialize Workspace
