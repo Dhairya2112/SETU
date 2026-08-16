@@ -16,6 +16,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired, isMobil
     const audioQueueRef = useRef([]);
     const isStreamingRef = useRef(false);
     const isInterruptedRef = useRef(false);
+    const lastCommandSourceRef = useRef('desktop');
 
     const onReminderFiredRef = useRef(onReminderFired);
     useEffect(() => {
@@ -125,6 +126,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired, isMobil
             });
           } else if (data.chunk_type === 'text_user') {
             setIsThinking(false);
+            lastCommandSourceRef.current = data.source || 'desktop';
             setMessages(prev => [...prev, { role: 'user', text: data.message, source: data.source }]);
           } else if (data.chunk_type === 'switch_conversation') {
               if (onSwitchConversation && data.conversation_id && data.conversation_id !== conversationId) {
@@ -132,6 +134,10 @@ export function useAgentSocket({ token, conversationId, onReminderFired, isMobil
               }
           } else if (data.chunk_type === 'audio') {
               if (isInterruptedRef.current) return;
+              
+              if (!isMobileClient && lastCommandSourceRef.current === 'mobile') {
+                  return;
+              }
               
               const audioUrl = `data:audio/wav;base64,${data.message}`;
               audioQueueRef.current.push(audioUrl);
@@ -220,6 +226,7 @@ export function useAgentSocket({ token, conversationId, onReminderFired, isMobil
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       stopSpeaking();
       isInterruptedRef.current = false;
+      lastCommandSourceRef.current = isMobileClient ? 'mobile' : 'desktop';
       setMessages(prev => [...prev, { role: 'user', text }]);
       setIsThinking(true);
       setActiveStatus('running');
