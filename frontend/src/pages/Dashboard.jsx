@@ -126,6 +126,12 @@ export function Dashboard() {
     navigate('/auth');
   }, [logout, navigate]);
 
+  useEffect(() => {
+    if (mobileConnected) {
+      setShowPairingModal(false);
+    }
+  }, [mobileConnected]);
+
   // Poll audio level when listening
   useEffect(() => {
     let animationFrameId;
@@ -1073,13 +1079,15 @@ export function Dashboard() {
                       </div>
                     )}
 
-                    <div onClick={handlePairDevice} className="glass-panel rounded-3xl p-6 border-dashed border-white/10 hover:border-white/20 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[200px] text-center group">
-                      <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-4 group-hover:border-[#8052ff]/30 group-hover:bg-[#8052ff]/5 transition-all text-zinc-400 group-hover:text-white">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
+                    {!mobileConnected && (
+                      <div onClick={handlePairDevice} className="glass-panel rounded-3xl p-6 border-dashed border-white/10 hover:border-white/20 transition-all cursor-pointer flex flex-col items-center justify-center min-h-[200px] text-center group">
+                        <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center mb-4 group-hover:border-[#8052ff]/30 group-hover:bg-[#8052ff]/5 transition-all text-zinc-400 group-hover:text-white">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>
+                        </div>
+                        <h3 className="text-base font-bold text-white mb-1">Pair Mobile Device</h3>
+                        <p className="text-xs text-zinc-500 max-w-[200px]">Scan QR code or enter a 6-digit PIN on your phone to link it to Setu.</p>
                       </div>
-                      <h3 className="text-base font-bold text-white mb-1">{mobileConnected ? 'Pair Another Device' : 'Pair Mobile Device'}</h3>
-                      <p className="text-xs text-zinc-500 max-w-[200px]">Scan QR code or enter a 6-digit PIN on your phone to link it to Setu.</p>
-                    </div>
+                    )}
                   </div>
                 </div>
               </motion.div>
