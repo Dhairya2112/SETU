@@ -1,6 +1,6 @@
 # SETU — Agentic AI Workstation
 
-> **Sovereign hybrid AI workstation co-pilot designed and built by Dhairya Dave.**  
+> **hybrid AI workstation co-pilot designed and built by Dhairya Dave.**  
 > A desktop voice and text agent that lives on your hardware, automates OS workflows, and reasons via multi-layer cloud LLMs.
 
 ---
